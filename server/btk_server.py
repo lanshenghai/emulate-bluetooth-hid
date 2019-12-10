@@ -112,8 +112,8 @@ class BTKbDevice():
         print("Configuring for name "+BTKbDevice.MY_DEV_NAME + " to " + self.MY_ADDRESS)
 
         #set the device class to a keybord and set the name
-        os.system("hciconfig hcio class 0x002540")
-        #os.system("hciconfig hcio class 0x0025c0")
+        #os.system("hciconfig hcio class 0x002540")
+        os.system("hciconfig hcio class 0x0025c0")
         #os.system("hciconfig hcio class 0x005c0")
         os.system("hciconfig hcio name " + BTKbDevice.MY_DEV_NAME)
 
