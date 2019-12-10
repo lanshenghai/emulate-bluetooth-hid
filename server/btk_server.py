@@ -20,7 +20,7 @@ import dbus.mainloop.glib
 import time
 import bluetooth
 from bluetooth import *
-
+import subprocess
 
 import gtk
 from dbus.mainloop.glib import DBusGMainLoop
@@ -87,21 +87,34 @@ class BTKbDevice():
     def __init__(self):
 
         print("Setting up BT device")
-
+        self.MY_ADDRESS = self.get_dev_address()
+        self.power_up()
         self.init_bt_device()
         self.init_bluez_profile()
                     
+    def get_dev_address(self):
+        output = subprocess.check_output(['hciconfig']).split('\n')
+        words = output[1].split(' ')
+        if words[1] == 'Address:':
+            return words[2]
+        else:
+            return None
 
+    def power_up(self):
+        lines = subprocess.check_output(['hciconfig']).split('\n')
+        if lines[2] == "\tDOWN ":
+            os.system("hciconfig hci0 up")
+            
     #configure the bluetooth hardware device
     def init_bt_device(self):
 
 
-        print("Configuring for name "+BTKbDevice.MY_DEV_NAME)
+        print("Configuring for name "+BTKbDevice.MY_DEV_NAME + " to " + self.MY_ADDRESS)
 
         #set the device class to a keybord and set the name
-        #os.system("hciconfig hcio class 0x002540")
+        os.system("hciconfig hcio class 0x002540")
         #os.system("hciconfig hcio class 0x0025c0")
-        os.system("hciconfig hcio class 0x005c0")
+        #os.system("hciconfig hcio class 0x005c0")
         os.system("hciconfig hcio name " + BTKbDevice.MY_DEV_NAME)
 
         #make the device discoverable

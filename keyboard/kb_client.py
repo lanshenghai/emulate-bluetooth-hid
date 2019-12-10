@@ -63,6 +63,7 @@ class Keyboard():
 				#we're only plugging one thing in
 				#self.dev = InputDevice("/dev/input/event0")
 				self.dev = InputDevice("/dev/input/by-path/platform-i8042-serio-0-event-kbd")
+				#self.dev = InputDevice("/dev/input/event3")
 				have_dev=True
 			except OSError:
 				print "Keyboard not found, waiting 3 seconds and retrying"
@@ -93,7 +94,7 @@ class Keyboard():
 				elif self.state[i] == 0x00 and event.value==1:
 					#if the current space if empty and the key is being pressed
 					self.state[i]=hex_key
-					break;
+					break
 					
 
 	#poll for keyboard events
