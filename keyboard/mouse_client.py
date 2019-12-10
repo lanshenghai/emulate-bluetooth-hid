@@ -81,11 +81,12 @@ class Mouse():
 
     # take care of mouse movements
     def change_state_movement(self, event):
+        self.mouse_state[3] = 0x00
+        self.mouse_state[4] = 0x00
+        self.mouse_state[5] = 0x00
         if event.code == ecodes.REL_X:
-            print "X:" + hex(event.value)
             self.mouse_state[3] = event.value & 0xFF
         elif event.code == ecodes.REL_Y:
-            print "Y:" + hex(event.value)
             self.mouse_state[4] = event.value & 0xFF
         elif event.code == ecodes.REL_WHEEL:
             self.mouse_state[5] = event.value & 0xFF
