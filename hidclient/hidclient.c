@@ -110,6 +110,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <linux/input.h>
+#include <dbus/dbus.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
@@ -128,8 +129,8 @@
 // Bluetooth "ports" (PSMs) for HID usage, standardized to be 17 and 19 resp.
 // In theory you could use different ports, but several implementations seem
 // to ignore the port info in the SDP records and always use 17 and 19. YMMV.
-#define	PSMHIDCTL	0x11
-#define	PSMHIDINT	0x13
+#define	PSMHIDCTL	17
+#define	PSMHIDINT	19
 
 // Information to be submitted to the SDP server, as service description
 #define	HIDINFO_NAME	"Bluez virtual Mouse and Keyboard"
@@ -243,6 +244,42 @@ sdp_data_t *sdp_seq_alloc_with_length(void **dtds, void **values, int *length,
     return sdp_data_alloc_with_length(SDP_SEQ8, seq, totall);
 }
 
+static void append_variant(DBusMessageIter *iter, int type, const void *val)
+{
+    DBusMessageIter value;
+    char sig[2] = { type, '\0' };
+    dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, sig, &value);
+    dbus_message_iter_append_basic(&value, type, val);
+    dbus_message_iter_close_container(iter, &value);
+}
+
+static void dict_append_basic(DBusMessageIter *dict, int key_type,
+                    const void *key, int type, void *val)
+{
+    DBusMessageIter entry;
+
+    if (type == DBUS_TYPE_STRING) {
+        const char *str = *((const char **) val);
+        if (str == NULL)
+            return;
+    }
+
+    dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY,
+                            NULL, &entry);
+
+    dbus_message_iter_append_basic(&entry, key_type, key);
+
+    append_variant(&entry, type, val);
+
+    dbus_message_iter_close_container(dict, &entry);
+}
+
+void g_dbus_dict_append_entry(DBusMessageIter *dict,
+                    const char *key, int type, void *val)
+{
+    dict_append_basic(dict, DBUS_TYPE_STRING, &key, type, val);
+}
+
 /*
  * dosdpregistration -	Care for the proper SDP record sent to the "sdpd"
  *			so that other BT devices can discover the HID service
@@ -250,141 +287,209 @@ sdp_data_t *sdp_seq_alloc_with_length(void **dtds, void **values, int *length,
  */
 int	dosdpregistration ( void )
 {
-    sdp_record_t	record;
-    sdp_session_t	*session;
-        sdp_list_t	*svclass_id,
-            *pfseq,
-            *apseq,
-            *root;
-    uuid_t		root_uuid,
-            hidkb_uuid,
-            l2cap_uuid,
-            hidp_uuid;
-        sdp_profile_desc_t	profile[1];
-        sdp_list_t	*aproto,
-            *proto[3];
-    sdp_data_t	*psm,
-            *lang_lst,
-            *lang_lst2,
-            *hid_spec_lst,
-            *hid_spec_lst2;
-        void		*dtds[2],
-            *values[2],
-            *dtds2[2],
-            *values2[2];
-        int		i,
-            leng[2];
-        uint8_t		dtd=SDP_UINT16,
-            dtd2=SDP_UINT8,
-            dtd_data=SDP_TEXT_STR8,
-            hid_spec_type=0x22;
-        uint16_t	hid_attr_lang[]={0x409, 0x100},
-            ctrl=PSMHIDCTL,
-            intr=PSMHIDINT,
-            hid_attr[]={0x100, 0x111, 0x40, 0x00, 0x01, 0x01},
-            // Assigned to SDP 0x200...0x205 - see HID SPEC for
-            // details. Those values seem to work fine...
-            // "it\'s a kind of magic" numbers.
-            hid_attr2[]={0x100, 0x0};
+    // sdp_record_t	record;
+    // sdp_session_t	*session;
+    // sdp_list_t *svclass_id,
+    //         *pfseq,
+    //         *apseq,
+    //         *root;
+    // uuid_t  root_uuid,
+    //         hidkb_uuid,
+    //         l2cap_uuid,
+    //         hidp_uuid;
+    // sdp_profile_desc_t	profile[1];
+    // sdp_list_t *aproto,
+    //         *proto[3];
+    // sdp_data_t *psm,
+    //         *lang_lst,
+    //         *lang_lst2,
+    //         *hid_spec_lst,
+    //         *hid_spec_lst2;
+    // void *dtds[2],
+    //      *values[2],
+    //      *dtds2[2],
+    //      *values2[2];
+    // int i,
+    //     leng[2];
+    // uint8_t dtd=SDP_UINT16,
+    //         dtd2=SDP_UINT8,
+    //         dtd_data=SDP_TEXT_STR8,
+    //         hid_spec_type=0x22;
+    // uint16_t hid_attr_lang[]={0x409, 0x100},
+    //          ctrl=PSMHIDCTL,
+    //          intr=PSMHIDINT,
+    //          hid_attr[]={0x100, 0x111, 0x40, 0x00, 0x01, 0x01},
+    //          // Assigned to SDP 0x200...0x205 - see HID SPEC for
+    //          // details. Those values seem to work fine...
+    //          // "it\'s a kind of magic" numbers.
+    //          hid_attr2[]={0x100, 0x0};
 
-    // Connect to SDP server on localhost, to publish service information
-    session = sdp_connect ( BDADDR_ANY, BDADDR_LOCAL, 0 );
-    if ( ! session )
-    {
-        fprintf ( stderr, "Failed to connect to SDP server: %s\n",
-                strerror ( errno ) );
-        return	1;
+    // // Connect to SDP server on localhost, to publish service information
+    // session = sdp_connect ( BDADDR_ANY, BDADDR_LOCAL, 0 );
+    // if ( ! session )
+    // {
+    //     fprintf ( stderr, "Failed to connect to SDP server: %s\n",
+    //             strerror ( errno ) );
+    //     return	1;
+    // }
+    //     memset(&record, 0, sizeof(sdp_record_t));
+    //     record.handle = 0xffffffff;
+    // // With 0xffffffff, we get assigned the first free record >= 0x10000
+    // // Make HID service visible (add to PUBLIC BROWSE GROUP)
+    //     sdp_uuid16_create(&root_uuid, PUBLIC_BROWSE_GROUP);
+    //     root = sdp_list_append(0, &root_uuid);
+    //     sdp_set_browse_groups(&record, root);
+    // // Language Information to be added
+    //     add_lang_attr(&record);
+    // // The descriptor for the keyboard
+    //     sdp_uuid16_create(&hidkb_uuid, HID_SVCLASS_ID);
+    //     svclass_id = sdp_list_append(0, &hidkb_uuid);
+    //     sdp_set_service_classes(&record, svclass_id);
+    // // And information about the HID profile used
+    //     sdp_uuid16_create(&profile[0].uuid, HID_PROFILE_ID);
+    //     profile[0].version = 0x0100;
+    //     pfseq = sdp_list_append(0, profile);
+    //     sdp_set_profile_descs(&record, pfseq);
+    // // We are using L2CAP, so add an info about that
+    //     sdp_uuid16_create(&l2cap_uuid, L2CAP_UUID);
+    //     proto[1] = sdp_list_append(0, &l2cap_uuid);
+    //     psm = sdp_data_alloc(SDP_UINT16, &ctrl);
+    //     proto[1] = sdp_list_append(proto[1], psm);
+    //     apseq = sdp_list_append(0, proto[1]);
+    // // And about our purpose, the HID protocol data transfer
+    //     sdp_uuid16_create(&hidp_uuid, HIDP_UUID);
+    //     proto[2] = sdp_list_append(0, &hidp_uuid);
+    //     apseq = sdp_list_append(apseq, proto[2]);
+    //     aproto = sdp_list_append(0, apseq);
+    //     sdp_set_access_protos(&record, aproto);
+    //     proto[1] = sdp_list_append(0, &l2cap_uuid);
+    //     psm = sdp_data_alloc(SDP_UINT16, &intr);
+    //     proto[1] = sdp_list_append(proto[1], psm);
+    //     apseq = sdp_list_append(0, proto[1]);
+    //     sdp_uuid16_create(&hidp_uuid, HIDP_UUID);
+    //     proto[2] = sdp_list_append(0, &hidp_uuid);
+    //     apseq = sdp_list_append(apseq, proto[2]);
+    //     aproto = sdp_list_append(0, apseq);
+    //     sdp_set_add_access_protos(&record, aproto);
+    // // Set service name, description
+    //     sdp_set_info_attr(&record, HIDINFO_NAME, HIDINFO_PROV, HIDINFO_DESC);
+    // // Add a few HID-specifid pieces of information
+    //     // See the HID spec for details what those codes 0x200+something
+    // // are good for... we send a fixed set of info that seems to work
+    //     sdp_attr_add_new(&record, SDP_ATTR_HID_DEVICE_RELEASE_NUMBER,
+    //                                     SDP_UINT16, &hid_attr[0]); /* Opt */
+    //     sdp_attr_add_new(&record, SDP_ATTR_HID_PARSER_VERSION,
+    //                                     SDP_UINT16, &hid_attr[1]); /* Mand */
+    //     sdp_attr_add_new(&record, SDP_ATTR_HID_DEVICE_SUBCLASS,
+    //                                     SDP_UINT8, &hid_attr[2]); /* Mand */
+    //     sdp_attr_add_new(&record, SDP_ATTR_HID_COUNTRY_CODE,
+    //                                     SDP_UINT8, &hid_attr[3]); /* Mand */
+    //     sdp_attr_add_new(&record, SDP_ATTR_HID_VIRTUAL_CABLE,
+    //                               SDP_BOOL, &hid_attr[4]); /* Mand */
+    //     sdp_attr_add_new(&record, SDP_ATTR_HID_RECONNECT_INITIATE,
+    //                               SDP_BOOL, &hid_attr[5]); /* Mand */
+    // // Add the HID descriptor (describing the virtual device) as code
+    // // SDP_ATTR_HID_DESCRIPTOR_LIST (0x206 IIRC)
+    //     dtds[0] = &dtd2;
+    //     values[0] = &hid_spec_type;
+    // dtd_data= SDPRECORD_BYTES <= 255 ? SDP_TEXT_STR8 : SDP_TEXT_STR16 ;
+    //     dtds[1] = &dtd_data;
+    //     values[1] = (uint8_t *) SDPRECORD;
+    //     leng[0] = 0;
+    //     leng[1] = SDPRECORD_BYTES;
+    //     hid_spec_lst = sdp_seq_alloc_with_length(dtds, values, leng, 2);
+    //     hid_spec_lst2 = sdp_data_alloc(SDP_SEQ8, hid_spec_lst);
+    //     sdp_attr_add(&record, SDP_ATTR_HID_DESCRIPTOR_LIST, hid_spec_lst2);
+    // // and continue adding further data bytes for 0x206+x values
+    //     for (i = 0; i < sizeof(hid_attr_lang) / 2; i++) {
+    //             dtds2[i] = &dtd;
+    //             values2[i] = &hid_attr_lang[i];
+    //     }
+    //     lang_lst = sdp_seq_alloc(dtds2, values2, sizeof(hid_attr_lang) / 2);
+    //     lang_lst2 = sdp_data_alloc(SDP_SEQ8, lang_lst);
+    //     sdp_attr_add(&record, SDP_ATTR_HID_LANG_ID_BASE_LIST, lang_lst2);
+    // sdp_attr_add_new ( &record, SDP_ATTR_HID_PROFILE_VERSION,
+    //         SDP_UINT16, &hid_attr2[0] );
+    // sdp_attr_add_new ( &record, SDP_ATTR_HID_BOOT_DEVICE,
+    //         SDP_UINT16, &hid_attr2[1] );
+    // // Submit our IDEA of a SDP record to the "sdpd"
+    //     if (sdp_record_register(session, &record, SDP_RECORD_PERSIST) < 0) {
+    //             fprintf ( stderr, "Service Record registration failed\n" );
+    //             return -1;
+    //     }
+    // // Store the service handle retrieved from there for reference (i.e.,
+    // // deleting the service info when this program terminates)
+    // sdphandle = record.handle;
+    //     fprintf ( stdout, "HID keyboard/mouse service registered\n" );
+    DBusConnection* conn;
+    DBusMessage *msg;
+    DBusMessageIter iter, opt;
+    int fp;
+    char *profile_dbus_path = "/bluez/yaptb/btkb_profile";
+    char *uuid="00001124-0000-1000-8000-00805f9b34fb";
+    DBusMessageIter entry;
+    char *buffer;
+    size_t buffer_size = 0;
+    char *role = "server";
+    int require_authentication = 0; 
+    int require_authorizaton = 0; 
+    DBusError err;
+    dbus_bool_t ret;
+    DBusPendingCall* pending;
+
+    conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
+    if (!conn) {
+        fprintf (stderr, "%s: %s\n",
+                err.name, err.message);
+        exit(-1);
     }
-        memset(&record, 0, sizeof(sdp_record_t));
-        record.handle = 0xffffffff;
-    // With 0xffffffff, we get assigned the first free record >= 0x10000
-    // Make HID service visible (add to PUBLIC BROWSE GROUP)
-        sdp_uuid16_create(&root_uuid, PUBLIC_BROWSE_GROUP);
-        root = sdp_list_append(0, &root_uuid);
-        sdp_set_browse_groups(&record, root);
-    // Language Information to be added
-        add_lang_attr(&record);
-    // The descriptor for the keyboard
-        sdp_uuid16_create(&hidkb_uuid, HID_SVCLASS_ID);
-        svclass_id = sdp_list_append(0, &hidkb_uuid);
-        sdp_set_service_classes(&record, svclass_id);
-    // And information about the HID profile used
-        sdp_uuid16_create(&profile[0].uuid, HID_PROFILE_ID);
-        profile[0].version = 0x0100;
-        pfseq = sdp_list_append(0, profile);
-        sdp_set_profile_descs(&record, pfseq);
-    // We are using L2CAP, so add an info about that
-        sdp_uuid16_create(&l2cap_uuid, L2CAP_UUID);
-        proto[1] = sdp_list_append(0, &l2cap_uuid);
-        psm = sdp_data_alloc(SDP_UINT16, &ctrl);
-        proto[1] = sdp_list_append(proto[1], psm);
-        apseq = sdp_list_append(0, proto[1]);
-    // And about our purpose, the HID protocol data transfer
-        sdp_uuid16_create(&hidp_uuid, HIDP_UUID);
-        proto[2] = sdp_list_append(0, &hidp_uuid);
-        apseq = sdp_list_append(apseq, proto[2]);
-        aproto = sdp_list_append(0, apseq);
-        sdp_set_access_protos(&record, aproto);
-        proto[1] = sdp_list_append(0, &l2cap_uuid);
-        psm = sdp_data_alloc(SDP_UINT16, &intr);
-        proto[1] = sdp_list_append(proto[1], psm);
-        apseq = sdp_list_append(0, proto[1]);
-        sdp_uuid16_create(&hidp_uuid, HIDP_UUID);
-        proto[2] = sdp_list_append(0, &hidp_uuid);
-        apseq = sdp_list_append(apseq, proto[2]);
-        aproto = sdp_list_append(0, apseq);
-        sdp_set_add_access_protos(&record, aproto);
-    // Set service name, description
-        sdp_set_info_attr(&record, HIDINFO_NAME, HIDINFO_PROV, HIDINFO_DESC);
-    // Add a few HID-specifid pieces of information
-        // See the HID spec for details what those codes 0x200+something
-    // are good for... we send a fixed set of info that seems to work
-        sdp_attr_add_new(&record, SDP_ATTR_HID_DEVICE_RELEASE_NUMBER,
-                                        SDP_UINT16, &hid_attr[0]); /* Opt */
-        sdp_attr_add_new(&record, SDP_ATTR_HID_PARSER_VERSION,
-                                        SDP_UINT16, &hid_attr[1]); /* Mand */
-        sdp_attr_add_new(&record, SDP_ATTR_HID_DEVICE_SUBCLASS,
-                                        SDP_UINT8, &hid_attr[2]); /* Mand */
-        sdp_attr_add_new(&record, SDP_ATTR_HID_COUNTRY_CODE,
-                                        SDP_UINT8, &hid_attr[3]); /* Mand */
-        sdp_attr_add_new(&record, SDP_ATTR_HID_VIRTUAL_CABLE,
-                                  SDP_BOOL, &hid_attr[4]); /* Mand */
-        sdp_attr_add_new(&record, SDP_ATTR_HID_RECONNECT_INITIATE,
-                                  SDP_BOOL, &hid_attr[5]); /* Mand */
-    // Add the HID descriptor (describing the virtual device) as code
-    // SDP_ATTR_HID_DESCRIPTOR_LIST (0x206 IIRC)
-        dtds[0] = &dtd2;
-        values[0] = &hid_spec_type;
-    dtd_data= SDPRECORD_BYTES <= 255 ? SDP_TEXT_STR8 : SDP_TEXT_STR16 ;
-        dtds[1] = &dtd_data;
-        values[1] = (uint8_t *) SDPRECORD;
-        leng[0] = 0;
-        leng[1] = SDPRECORD_BYTES;
-        hid_spec_lst = sdp_seq_alloc_with_length(dtds, values, leng, 2);
-        hid_spec_lst2 = sdp_data_alloc(SDP_SEQ8, hid_spec_lst);
-        sdp_attr_add(&record, SDP_ATTR_HID_DESCRIPTOR_LIST, hid_spec_lst2);
-    // and continue adding further data bytes for 0x206+x values
-        for (i = 0; i < sizeof(hid_attr_lang) / 2; i++) {
-                dtds2[i] = &dtd;
-                values2[i] = &hid_attr_lang[i];
-        }
-        lang_lst = sdp_seq_alloc(dtds2, values2, sizeof(hid_attr_lang) / 2);
-        lang_lst2 = sdp_data_alloc(SDP_SEQ8, lang_lst);
-        sdp_attr_add(&record, SDP_ATTR_HID_LANG_ID_BASE_LIST, lang_lst2);
-    sdp_attr_add_new ( &record, SDP_ATTR_HID_PROFILE_VERSION,
-            SDP_UINT16, &hid_attr2[0] );
-    sdp_attr_add_new ( &record, SDP_ATTR_HID_BOOT_DEVICE,
-            SDP_UINT16, &hid_attr2[1] );
-    // Submit our IDEA of a SDP record to the "sdpd"
-        if (sdp_record_register(session, &record, SDP_RECORD_PERSIST) < 0) {
-                fprintf ( stderr, "Service Record registration failed\n" );
-                return -1;
-        }
-    // Store the service handle retrieved from there for reference (i.e.,
-    // deleting the service info when this program terminates)
-    sdphandle = record.handle;
-        fprintf ( stdout, "HID keyboard/mouse service registered\n" );
-        return 0;
+
+    msg = dbus_message_new_method_call("org.bluez", "/org/bluez",
+                        "org.bluez.ProfileManager1",
+                        "RegisterProfile");
+    dbus_message_iter_init_append(msg, &iter);
+    dbus_message_iter_append_basic(&iter, DBUS_TYPE_OBJECT_PATH, &profile_dbus_path);
+    dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &uuid);
+    dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY,
+    				DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
+    				DBUS_TYPE_STRING_AS_STRING
+    				DBUS_TYPE_VARIANT_AS_STRING
+    				DBUS_DICT_ENTRY_END_CHAR_AS_STRING,
+    				&opt);
+    // dbus_message_iter_open_container(&iter, DBUS_TYPE_DICT_ENTRY, NULL, &opt);
+
+    fp = open("../server/sdp_record.xml", O_RDONLY);
+    buffer_size = lseek(fp, 0, SEEK_END);
+    buffer = (char*)malloc(buffer_size);
+    read(fp, buffer, buffer_size);
+
+    g_dbus_dict_append_entry(&opt, "ServiceRecord", DBUS_TYPE_STRING, &buffer);
+    free(buffer);
+    g_dbus_dict_append_entry(&opt, "Role", DBUS_TYPE_STRING, &role);
+    g_dbus_dict_append_entry(&opt, "RequireAuthentication", DBUS_TYPE_BOOLEAN, &require_authentication);
+    g_dbus_dict_append_entry(&opt, "RequireAuthorization", DBUS_TYPE_BOOLEAN, &require_authorizaton);
+    dbus_message_iter_close_container(&iter, &opt);
+
+	ret = dbus_connection_send(conn, msg, NULL);
+
+	if (ret == FALSE) {
+		perror("Unable to send message (passing fd blocked?)");
+        exit(-1);
+	}
+    // send message and get a handle for a reply
+   if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
+      fprintf(stderr, "Out Of Memory!\n"); 
+      exit(1);
+   }
+   if (NULL == pending) { 
+      fprintf(stderr, "Pending Call Null\n"); 
+      exit(1); 
+   }
+   dbus_connection_flush(conn);
+   
+   printf("Request Sent\n");
+
+    return 0;
 }
 
 /*
