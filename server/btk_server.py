@@ -27,47 +27,6 @@ from dbus.mainloop.glib import DBusGMainLoop
 
 
 #
-#define a bluez 5 profile object for our keyboard
-#
-class BTKbBluezProfile(dbus.service.Object):
-    fd = -1
-
-    @dbus.service.method("org.bluez.Profile1",
-                                    in_signature="", out_signature="")
-    def Release(self):
-            print("Release")
-            mainloop.quit()
-
-    @dbus.service.method("org.bluez.Profile1",
-                                    in_signature="", out_signature="")
-    def Cancel(self):
-            print("Cancel")
-
-    @dbus.service.method("org.bluez.Profile1", in_signature="oha{sv}", out_signature="")
-    def NewConnection(self, path, fd, properties):
-            self.fd = fd.take()
-            print("NewConnection(%s, %d)" % (path, self.fd))
-            for key in properties.keys():
-                    if key == "Version" or key == "Features":
-                            print("  %s = 0x%04x" % (key, properties[key]))
-                    else:
-                            print("  %s = %s" % (key, properties[key]))
-            
-
-
-    @dbus.service.method("org.bluez.Profile1", in_signature="o", out_signature="")
-    def RequestDisconnection(self, path):
-            print("RequestDisconnection(%s)" % (path))
-
-            if (self.fd > 0):
-                    os.close(self.fd)
-                    self.fd = -1
-
-    def __init__(self, bus, path):
-            dbus.service.Object.__init__(self, bus, path)
-
-
-#
 #create a bluetooth device to emulate a HID keyboard, 
 # advertize a SDP record using our bluez profile class
 #
@@ -139,13 +98,8 @@ class BTKbDevice():
         #retrieve a proxy for the bluez profile interface
         bus = dbus.SystemBus()
         manager = dbus.Interface(bus.get_object("org.bluez","/org/bluez"), "org.bluez.ProfileManager1")
-
-        profile = BTKbBluezProfile(bus, BTKbDevice.PROFILE_DBUS_PATH)
-
         manager.RegisterProfile(BTKbDevice.PROFILE_DBUS_PATH, BTKbDevice.UUID,opts)
-
         print("Profile registered ")
-
 
     #read and return an sdp record from a file
     def read_sdp_service_record(self):
