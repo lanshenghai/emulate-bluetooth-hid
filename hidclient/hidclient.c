@@ -425,7 +425,7 @@ int	dosdpregistration ( void )
     DBusMessage *msg;
     DBusMessageIter iter, opt;
     int fp;
-    char *profile_dbus_path = "/bluez/yaptb/btkb_profile";
+    char *profile_dbus_path = "/bluez/yaptb/btkb_profile/00001124_0000_1000_8000_00805f9b34fb";
     char *uuid="00001124-0000-1000-8000-00805f9b34fb";
     DBusMessageIter entry;
     char *buffer;
@@ -462,6 +462,7 @@ int	dosdpregistration ( void )
     buffer_size = lseek(fp, 0, SEEK_END);
     buffer = (char*)malloc(buffer_size);
     read(fp, buffer, buffer_size);
+    printf("buffer size %ld\n", buffer_size);
 
     g_dbus_dict_append_entry(&opt, "ServiceRecord", DBUS_TYPE_STRING, &buffer);
     free(buffer);
