@@ -18,6 +18,18 @@
                 "$gcc"
             ],
             "group": "build"
+        },
+        {
+            "type": "shell",
+            "label": "make",
+            "command": "/usr/bin/make",
+            "options": {
+                "cwd": "${workspaceFolder}/hidclient"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build"
         }
     ]
 }

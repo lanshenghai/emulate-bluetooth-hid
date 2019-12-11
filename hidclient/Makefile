@@ -1,2 +1,2 @@
-hidclient: hidclient.cpp
-	g++ -o hidclient hidclient.cpp
+hidclient: hidclient.c
+	gcc -o hidclient hidclient.c -lbluetooth

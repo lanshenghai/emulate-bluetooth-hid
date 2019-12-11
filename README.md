@@ -29,3 +29,7 @@ My reworked version of the keyboard emulator sets itself up as a DBUS system bus
 For this to work, the DBUS system bus needs to be configured to add the btkserver API.  This is enabled by copying a configuration file into the /etc/dbus-1/system.d folder
 
 > sudo cp dbus/org.yaptb.btkbservice.conf /etc/dbus-1/system.d
+
+# Build hidclient
+
+> sudo apt-get install libbluetooth-dev
