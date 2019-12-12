@@ -127,49 +127,32 @@
 // Maximally, read MAXEVDEVS event devices simultaneously
 #define	MAXEVDEVS 64
 
+#define PROFiLE_DBUS_PATH "/bluez/yaptb/btkb_profile"
+#define UUID    "00001124-0000-1000-8000-00805f9b34fb"
+
 // Bluetooth "ports" (PSMs) for HID usage, standardized to be 17 and 19 resp.
 // In theory you could use different ports, but several implementations seem
 // to ignore the port info in the SDP records and always use 17 and 19. YMMV.
 #define	PSMHIDCTL	17
 #define	PSMHIDINT	19
 
-// Information to be submitted to the SDP server, as service description
-#define	HIDINFO_NAME	"Bluez virtual Mouse and Keyboard"
-#define	HIDINFO_PROV	"Anselm Martin Hoffmeister (GPL v2)"
-#define	HIDINFO_DESC	"Keyboard"
-
 // These numbers must also be used in the HID descriptor binary file
 #define	REPORTID_MOUSE	1
 #define	REPORTID_KEYBD	2
 
-// Fixed SDP record, corresponding to data structures below. Explanation
-// is in separate text file. No reason to change this if you do not want
-// to fiddle with the data sent over the BT connection as well.
-#define SDPRECORD	"\x05\x01\x09\x02\xA1\x01\x85\x01\x09\x01\xA1\x00" \
-            "\x05\x09\x19\x01\x29\x03\x15\x00\x25\x01\x75\x01" \
-            "\x95\x03\x81\x02\x75\x05\x95\x01\x81\x01\x05\x01" \
-            "\x09\x30\x09\x31\x09\x38\x15\x81\x25\x7F\x75\x08" \
-            "\x95\x02\x81\x06\xC0\xC0\x05\x01\x09\x06\xA1\x01" \
-            "\x85\x02\xA1\x00\x05\x07\x19\xE0\x29\xE7\x15\x00" \
-            "\x25\x01\x75\x01\x95\x08\x81\x02\x95\x08\x75\x08" \
-            "\x15\x00\x25\x65\x05\x07\x19\x00\x29\x65\x81\x00" \
-            "\xC0\xC0"
-#define SDPRECORD_BYTES	98
-
 //***************** Function prototypes
-int		dosdpregistration(void);
-void		sdpunregister(unsigned int);
-static void	add_lang_attr(sdp_record_t *r);
-int		btbind(int sockfd, unsigned short port);
-int		initevents(unsigned int,int);
-void		closeevents(void);
-int		initfifo(char *);
-void		closefifo(void);
-void		cleanup_stdin(void);
-int		add_filedescriptors(fd_set*);
-int		parse_events(fd_set*,int);
-void		showhelp(void);
-void		onsignal(int);
+int  dosdpregistration(void);
+void sdpunregister();
+int  btbind(int sockfd, unsigned short port);
+int  initevents(unsigned int,int);
+void closeevents(void);
+int  initfifo(char *);
+void closefifo(void);
+void cleanup_stdin(void);
+int  add_filedescriptors(fd_set*);
+int  parse_events(fd_set*,int);
+void showhelp(void);
+void onsignal(int);
 
 //***************** Data structures
 // Mouse HID report, as sent over the wire:
@@ -180,7 +163,7 @@ struct hidrep_mouse_t
     unsigned char	button;	// bits 0..2 for left,right,middle, others 0
     signed   char	axis_x; // relative movement in pixels, left/right
     signed   char	axis_y; // dito, up/down
-    signed   char	axis_z; // Used for the scroll wheel (?)
+    signed   char	axis_wheel; // Used for the scroll wheel (?)
 } __attribute((packed));
 // Keyboard HID report, as sent over the wire:
 struct hidrep_keyb_t
@@ -199,58 +182,130 @@ char		mousebuttons	 = 0;	// storage for button status
 char		modifierkeys	 = 0;	// and for shift/ctrl/alt... status
 char		pressedkey[8]	 = { 0, 0, 0, 0,  0, 0, 0, 0 };
 char		connectionok	 = 0;
-uint32_t	sdphandle	 = 0;	// To be used to "unregister" on exit
 int		debugevents      = 0;	// bitmask for debugging event data
+int pipefd[2];  // used to exit the select loop
 
-//***************** Implementation
-/* 
- * Taken from bluetooth library because of suspicious memory allocation
- * THIS IS A HACK that appears to work, and did not need to look into how it works
- * SHOULD BE FIXED AND FIX BACKPORTED TO BLUEZ
- */
-sdp_data_t *sdp_seq_alloc_with_length(void **dtds, void **values, int *length,
-                                int len)
+//********************** SDP report XML
+const char *sdp_record = 
+"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+""
+"<record>"
+"    <attribute id=\"0x0001\">    <!-- SDP_ATTR_SVCLASS_ID_LIST -->"
+"        <sequence>"
+"            <uuid value=\"0x1124\" />"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x0004\"> <!-- SDP_ATTR_PROTO_DESC_LIST    -->"
+"        <sequence>"
+"            <sequence>"
+"                <uuid value=\"0x0100\" />"
+"                <uint16 value=\"0x0011\" />"
+"            </sequence>"
+"            <sequence>"
+"                <uuid value=\"0x0011\" />"
+"            </sequence>"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x0005\">  <!-- SDP_ATTR_BROWSE_GRP_LIST -->"
+"        <sequence>"
+"            <uuid value=\"0x1002\" />"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x0006\">  <!-- SDP_ATTR_LANG_BASE_ATTR_ID_LIST        -->"
+"        <sequence>"
+"            <uint16 value=\"0x656e\" />    <!-- Natural Language Code = English -->"
+"            <uint16 value=\"0x006a\" />     <!-- Character Encoding = UTF-8 -->"
+"            <uint16 value=\"0x0100\" />    <!-- String Base = 0x0100 -->"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x0009\">    <!-- SDP_ATTR_PFILE_DESC_LIST -->"
+"        <sequence>"
+"            <sequence>"
+"                <uuid value=\"0x1124\" />    <!-- Human Interface Device -->"
+"                <uint16 value=\"0x0100\" />     <!-- L2CAP -->"
+"            </sequence>"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x000d\">  <!-- Additional Protocol Descriptor Lists -->"
+"        <sequence>"
+"            <sequence>"
+"                <sequence>"
+"                    <uuid value=\"0x0100\" />"
+"                    <uint16 value=\"0x0013\" />"
+"                </sequence>"
+"                <sequence>"
+"                    <uuid value=\"0x0011\" />"
+"                </sequence>"
+"            </sequence>"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x0100\">    <!-- service name  -->"
+"        <text value=\"Raspberry Pi Virtual Keyboard\" />"
+"    </attribute>"
+"    <attribute id=\"0x0101\">    <!-- service description -->"
+"        <text value=\"USB > BT Keyboard\" />"
+"    </attribute>"
+"    <attribute id=\"0x0102\">    <!-- service provider -->"
+"        <text value=\"Raspberry Pi\" />"
+"    </attribute>"
+"    <attribute id=\"0x0200\"> <!-- SDP_ATTR_HID_DEVICE_RELEASE_NUMBER -->"
+"        <uint16 value=\"0x0100\" />"
+"    </attribute>"
+"    <attribute id=\"0x0201\"> <!-- HID Parser Version = 1.11         -->"
+"        <uint16 value=\"0x0111\" />"
+"    </attribute>"
+"    <attribute id=\"0x0202\">    <!-- HID Subclass = Not Boot Mouse -->"
+"        <uint8 value=\"0x40\" />"
+"    </attribute>"
+"    <attribute id=\"0x0203\"> <!-- HID Country Code = ??         -->"
+"        <uint8 value=\"0x00\" />"
+"    </attribute>"
+"    <attribute id=\"0x0204\">    <!-- HID Virtual Cable = False            -->"
+"        <boolean value=\"false\" />"
+"    </attribute>"
+"    <attribute id=\"0x0205\"> <!-- HID Reconnect Initiate = False -->"
+"        <boolean value=\"false\" />"
+"    </attribute>"
+"    <attribute id=\"0x0206\">    <!-- HID Descriptor List -->"
+"        <sequence>"
+"            <sequence>"
+"                <uint8 value=\"0x22\" />  <!-- Class Descriptor Type = Report -->"
+"                <text encoding=\"hex\" value=\"05010902A10185010901A1000509190129031500250175019503810275059501810105010930093109381581257F750895038106C0C005010906A1018502A100050719E029E71500250175019508810295087508150025650507190029658100C0C0\"/>"
+"            </sequence>"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x0207\">    <!--HID LANGID Base List        -->"
+"        <sequence>    <!-- HID LANGID Base -->"
+"            <sequence>"
+"                <uint16 value=\"0x0409\" />    <!-- Natural Language Code = English (United States) -->"
+"                <uint16 value=\"0x0100\" />    <!-- String Base = 0x0100 -->"
+"            </sequence>"
+"        </sequence>"
+"    </attribute>"
+"    <attribute id=\"0x020b\">    <!-- SDP_ATTR_HID_PROFILE_VERSION        -->"
+"        <uint16 value=\"0x0100\" />"
+"    </attribute>"
+"    <attribute id=\"0x020c\">    <!--SDP_ATTR_HID_SUPERVISION_TIMEOUT    -->"
+"        <uint16 value=\"0x0c80\" />"
+"    </attribute>"
+"    <attribute id=\"0x020d\">    <!-- SDP_ATTR_HID_NORMALLY_CONNECTABLE -->"
+"        <boolean value=\"true\" />"
+"    </attribute>"
+"    <attribute id=\"0x020e\">    <!--SDP_ATTR_HID_BOOT_DEVICE-->"
+"        <boolean value=\"false\" />"
+"    </attribute>"
+"    <attribute id=\"0x020f\">"
+"        <uint16 value=\"0x0640\" />"
+"    </attribute>"
+"    <attribute id=\"0x0210\">"
+"        <uint16 value=\"0x0320\" />"
+"    </attribute>"
+"</record>";
+
+GVariant *build_register_profile_params(const char *object_path, const char *uuid, const char *service_record)
 {
-    sdp_data_t *curr = NULL, *seq = NULL;
-    int i;
-    int totall = 1024;
-
-    for (i = 0; i < len; i++) {
-        sdp_data_t *data;
-        int8_t dtd = *(uint8_t *) dtds[i];
-
-
-        if (dtd >= SDP_SEQ8 && dtd <= SDP_ALT32) {
-            data = (sdp_data_t *) values[i]; }
-        else {
-            data = sdp_data_alloc_with_length(dtd, values[i], length[i]); }
-
-        if (!data)
-            return NULL;
-
-        if (curr)
-            curr->next = data;
-        else
-            seq = data;
-
-        curr = data;
-        totall +=  length[i] + sizeof *seq; /* no idea what this should really be */
-    }
-/*
- * Here we had a reference here to a non-existing array member. Changed it something that
- * appears to be large enough BUT author has no idea what it really should be
- */
-//  fprintf ( stderr, "length[%d]): %d, totall: %d\n", i, length[i], totall);
-
-    return sdp_data_alloc_with_length(SDP_SEQ8, seq, totall);
-}
-
-GVariant *build_register_profile_params(char *object_path, char *uuid, char *service_record)
-{
-    GVariantBuilder *builder;
     GVariant *value;
-
-    builder = g_variant_builder_new (G_VARIANT_TYPE ("(osa{sv})"));
+    GVariantBuilder *builder = g_variant_builder_new (G_VARIANT_TYPE ("(osa{sv})"));
     g_variant_builder_add (builder, "o", object_path);
     g_variant_builder_add (builder, "s", uuid);
     g_variant_builder_open (builder, G_VARIANT_TYPE ("a{sv}"));
@@ -271,160 +326,13 @@ GVariant *build_register_profile_params(char *object_path, char *uuid, char *ser
  */
 int	dosdpregistration ( void )
 {
-    // sdp_record_t	record;
-    // sdp_session_t	*session;
-    // sdp_list_t *svclass_id,
-    //         *pfseq,
-    //         *apseq,
-    //         *root;
-    // uuid_t  root_uuid,
-    //         hidkb_uuid,
-    //         l2cap_uuid,
-    //         hidp_uuid;
-    // sdp_profile_desc_t	profile[1];
-    // sdp_list_t *aproto,
-    //         *proto[3];
-    // sdp_data_t *psm,
-    //         *lang_lst,
-    //         *lang_lst2,
-    //         *hid_spec_lst,
-    //         *hid_spec_lst2;
-    // void *dtds[2],
-    //      *values[2],
-    //      *dtds2[2],
-    //      *values2[2];
-    // int i,
-    //     leng[2];
-    // uint8_t dtd=SDP_UINT16,
-    //         dtd2=SDP_UINT8,
-    //         dtd_data=SDP_TEXT_STR8,
-    //         hid_spec_type=0x22;
-    // uint16_t hid_attr_lang[]={0x409, 0x100},
-    //          ctrl=PSMHIDCTL,
-    //          intr=PSMHIDINT,
-    //          hid_attr[]={0x100, 0x111, 0x40, 0x00, 0x01, 0x01},
-    //          // Assigned to SDP 0x200...0x205 - see HID SPEC for
-    //          // details. Those values seem to work fine...
-    //          // "it\'s a kind of magic" numbers.
-    //          hid_attr2[]={0x100, 0x0};
-
-    // // Connect to SDP server on localhost, to publish service information
-    // session = sdp_connect ( BDADDR_ANY, BDADDR_LOCAL, 0 );
-    // if ( ! session )
-    // {
-    //     fprintf ( stderr, "Failed to connect to SDP server: %s\n",
-    //             strerror ( errno ) );
-    //     return	1;
-    // }
-    //     memset(&record, 0, sizeof(sdp_record_t));
-    //     record.handle = 0xffffffff;
-    // // With 0xffffffff, we get assigned the first free record >= 0x10000
-    // // Make HID service visible (add to PUBLIC BROWSE GROUP)
-    //     sdp_uuid16_create(&root_uuid, PUBLIC_BROWSE_GROUP);
-    //     root = sdp_list_append(0, &root_uuid);
-    //     sdp_set_browse_groups(&record, root);
-    // // Language Information to be added
-    //     add_lang_attr(&record);
-    // // The descriptor for the keyboard
-    //     sdp_uuid16_create(&hidkb_uuid, HID_SVCLASS_ID);
-    //     svclass_id = sdp_list_append(0, &hidkb_uuid);
-    //     sdp_set_service_classes(&record, svclass_id);
-    // // And information about the HID profile used
-    //     sdp_uuid16_create(&profile[0].uuid, HID_PROFILE_ID);
-    //     profile[0].version = 0x0100;
-    //     pfseq = sdp_list_append(0, profile);
-    //     sdp_set_profile_descs(&record, pfseq);
-    // // We are using L2CAP, so add an info about that
-    //     sdp_uuid16_create(&l2cap_uuid, L2CAP_UUID);
-    //     proto[1] = sdp_list_append(0, &l2cap_uuid);
-    //     psm = sdp_data_alloc(SDP_UINT16, &ctrl);
-    //     proto[1] = sdp_list_append(proto[1], psm);
-    //     apseq = sdp_list_append(0, proto[1]);
-    // // And about our purpose, the HID protocol data transfer
-    //     sdp_uuid16_create(&hidp_uuid, HIDP_UUID);
-    //     proto[2] = sdp_list_append(0, &hidp_uuid);
-    //     apseq = sdp_list_append(apseq, proto[2]);
-    //     aproto = sdp_list_append(0, apseq);
-    //     sdp_set_access_protos(&record, aproto);
-    //     proto[1] = sdp_list_append(0, &l2cap_uuid);
-    //     psm = sdp_data_alloc(SDP_UINT16, &intr);
-    //     proto[1] = sdp_list_append(proto[1], psm);
-    //     apseq = sdp_list_append(0, proto[1]);
-    //     sdp_uuid16_create(&hidp_uuid, HIDP_UUID);
-    //     proto[2] = sdp_list_append(0, &hidp_uuid);
-    //     apseq = sdp_list_append(apseq, proto[2]);
-    //     aproto = sdp_list_append(0, apseq);
-    //     sdp_set_add_access_protos(&record, aproto);
-    // // Set service name, description
-    //     sdp_set_info_attr(&record, HIDINFO_NAME, HIDINFO_PROV, HIDINFO_DESC);
-    // // Add a few HID-specifid pieces of information
-    //     // See the HID spec for details what those codes 0x200+something
-    // // are good for... we send a fixed set of info that seems to work
-    //     sdp_attr_add_new(&record, SDP_ATTR_HID_DEVICE_RELEASE_NUMBER,
-    //                                     SDP_UINT16, &hid_attr[0]); /* Opt */
-    //     sdp_attr_add_new(&record, SDP_ATTR_HID_PARSER_VERSION,
-    //                                     SDP_UINT16, &hid_attr[1]); /* Mand */
-    //     sdp_attr_add_new(&record, SDP_ATTR_HID_DEVICE_SUBCLASS,
-    //                                     SDP_UINT8, &hid_attr[2]); /* Mand */
-    //     sdp_attr_add_new(&record, SDP_ATTR_HID_COUNTRY_CODE,
-    //                                     SDP_UINT8, &hid_attr[3]); /* Mand */
-    //     sdp_attr_add_new(&record, SDP_ATTR_HID_VIRTUAL_CABLE,
-    //                               SDP_BOOL, &hid_attr[4]); /* Mand */
-    //     sdp_attr_add_new(&record, SDP_ATTR_HID_RECONNECT_INITIATE,
-    //                               SDP_BOOL, &hid_attr[5]); /* Mand */
-    // // Add the HID descriptor (describing the virtual device) as code
-    // // SDP_ATTR_HID_DESCRIPTOR_LIST (0x206 IIRC)
-    //     dtds[0] = &dtd2;
-    //     values[0] = &hid_spec_type;
-    // dtd_data= SDPRECORD_BYTES <= 255 ? SDP_TEXT_STR8 : SDP_TEXT_STR16 ;
-    //     dtds[1] = &dtd_data;
-    //     values[1] = (uint8_t *) SDPRECORD;
-    //     leng[0] = 0;
-    //     leng[1] = SDPRECORD_BYTES;
-    //     hid_spec_lst = sdp_seq_alloc_with_length(dtds, values, leng, 2);
-    //     hid_spec_lst2 = sdp_data_alloc(SDP_SEQ8, hid_spec_lst);
-    //     sdp_attr_add(&record, SDP_ATTR_HID_DESCRIPTOR_LIST, hid_spec_lst2);
-    // // and continue adding further data bytes for 0x206+x values
-    //     for (i = 0; i < sizeof(hid_attr_lang) / 2; i++) {
-    //             dtds2[i] = &dtd;
-    //             values2[i] = &hid_attr_lang[i];
-    //     }
-    //     lang_lst = sdp_seq_alloc(dtds2, values2, sizeof(hid_attr_lang) / 2);
-    //     lang_lst2 = sdp_data_alloc(SDP_SEQ8, lang_lst);
-    //     sdp_attr_add(&record, SDP_ATTR_HID_LANG_ID_BASE_LIST, lang_lst2);
-    // sdp_attr_add_new ( &record, SDP_ATTR_HID_PROFILE_VERSION,
-    //         SDP_UINT16, &hid_attr2[0] );
-    // sdp_attr_add_new ( &record, SDP_ATTR_HID_BOOT_DEVICE,
-    //         SDP_UINT16, &hid_attr2[1] );
-    // // Submit our IDEA of a SDP record to the "sdpd"
-    //     if (sdp_record_register(session, &record, SDP_RECORD_PERSIST) < 0) {
-    //             fprintf ( stderr, "Service Record registration failed\n" );
-    //             return -1;
-    //     }
-    // // Store the service handle retrieved from there for reference (i.e.,
-    // // deleting the service info when this program terminates)
-    // sdphandle = record.handle;
-    //     fprintf ( stdout, "HID keyboard/mouse service registered\n" );
-    int fd;
-    char *profile_dbus_path = "/bluez/yaptb/btkb_profile";
-    char *uuid="00001124-0000-1000-8000-00805f9b34fb";
-    size_t buffer_size = 0;
-    char *buffer;
-
     GDBusConnection *connection;
     GError *err = NULL;
     connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
     if (err != NULL) {
-        fprintf (stderr, "Unable to read file: %s\n", err->message);
+        fprintf (stderr, "Call g_bus_get_sync failed: %s\n", err->message);
         return -1;
     }
-    fd = open("../server/sdp_record.xml", O_RDONLY);
-    buffer_size = lseek(fd, 0, SEEK_END);
-    buffer = (char*)malloc(buffer_size);
-    lseek(fd, 0, SEEK_SET);
-    read(fd, buffer, buffer_size);
-    close(fd);
-
     g_dbus_connection_call_sync (connection,
                                 "org.bluez",
                                 "/org/bluez",
@@ -434,15 +342,17 @@ int	dosdpregistration ( void )
                                 //     "/bluez/yaptb/btkb_profile",
                                 //     "00001124-0000-1000-8000-00805f9b34fb"
                                 // ),
-                                build_register_profile_params(profile_dbus_path, uuid, buffer),
+                                build_register_profile_params(PROFiLE_DBUS_PATH, UUID, sdp_record),
                                 NULL,
                                 G_DBUS_CALL_FLAGS_NONE,
                                 -1,
                                 NULL,
                                 &err);
-   
-    printf("Request Sent\n");
-    free(buffer);
+    if (err != NULL) {
+        fprintf (stderr, "Unable to call RegisterProfile: %s\n", err->message);
+        return -1;
+    }
+    fprintf ( stdout, "HID keyboard/mouse service registered\n" );
     return 0;
 }
 
@@ -450,39 +360,28 @@ int	dosdpregistration ( void )
  * 	sdpunregister - Remove SDP entry for HID service on program termination
  * 	Parameters: SDP handle (typically 0x10004 or similar)
  */
-void	sdpunregister ( uint32_t handle )
+void sdpunregister()
 {
-        uint32_t	range=0x0000ffff;
-    sdp_list_t    *	attr;
-    sdp_session_t *	sess;
-    sdp_record_t  *	rec;
-    // Connect to the local SDP server
-    sess = sdp_connect(BDADDR_ANY, BDADDR_LOCAL, 0);
-    if ( !sess )	return;
-    attr = sdp_list_append(0, &range);
-    rec = sdp_service_attr_req(sess, handle, SDP_ATTR_REQ_RANGE, attr);
-    sdp_list_free(attr, 0);
-    if ( !rec ) {
-        sdp_close(sess);
-        return;
+    GDBusConnection *connection;
+    GError *err = NULL;
+    connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
+    if (err != NULL) {
+        fprintf (stderr, "Call g_bus_get_sync failed: %s\n", err->message);
     }
-    sdp_device_record_unregister(sess, BDADDR_ANY, rec);
-    sdp_close(sess);
-    // We do not care wether unregister fails. If it does, we cannot help it.
-    return;
-}
-
-static void add_lang_attr(sdp_record_t *r)
-{
-        sdp_lang_attr_t base_lang;
-        sdp_list_t *langs = 0;
-        /* UTF-8 MIBenum (http://www.iana.org/assignments/character-sets) */
-        base_lang.code_ISO639 = (0x65 << 8) | 0x6e;
-        base_lang.encoding = 106;
-        base_lang.base_offset = SDP_PRIMARY_LANG_BASE;
-        langs = sdp_list_append(0, &base_lang);
-        sdp_set_lang_attr(r, langs);
-        sdp_list_free(langs, 0);
+    g_dbus_connection_call_sync(connection,
+                                "org.bluez",
+                                "/org/bluez",
+                                "org.bluez.ProfileManager1",
+                                "UnregisterProfile",
+                                g_variant_new("(o)", PROFiLE_DBUS_PATH),
+                                NULL,
+                                G_DBUS_CALL_FLAGS_NONE,
+                                -1,
+                                NULL,
+                                &err);
+    if (err != NULL) {
+        fprintf (stderr, "Unable to call UnregisterProfile: %s\n", err->message);
+    }
 }
 
 // Wrapper for bind, caring for all the surrounding variables
@@ -846,7 +745,7 @@ int	parse_events ( fd_set * efds, int sockdesc )
                 evmouse->button = mousebuttons & 0x07;
                 evmouse->axis_x =
                 evmouse->axis_y =
-                evmouse->axis_z = 0;
+                evmouse->axis_wheel = 0;
                 if ( ! connectionok )
                     break;
                 j = send ( sockdesc, evmouse,
@@ -1075,21 +974,21 @@ int	parse_events ( fd_set * efds, int sockdesc )
           case	EV_REL:
             switch ( inevent->code )
             {
-              case	ABS_X:
-              case	ABS_Y:
-              case	ABS_Z:
+              case	REL_X:
+              case	REL_Y:
+              case	REL_Z:
               case	REL_WHEEL:
                 evmouse->btcode = 0xA1;
                 evmouse->rep_id = REPORTID_MOUSE;
                 evmouse->button = mousebuttons & 0x07;
                 evmouse->axis_x =
-                    ( inevent->code == ABS_X ?
+                    ( inevent->code == REL_X ?
                       inevent->value : 0 );
                 evmouse->axis_y =
-                    ( inevent->code == ABS_Y ?
+                    ( inevent->code == REL_Y ?
                       inevent->value : 0 );
-                evmouse->axis_z =
-                    ( inevent->code >= ABS_Z ?
+                evmouse->axis_wheel =
+                    ( inevent->code >= REL_Z ?
                       inevent->value : 0 );
                 if ( ! connectionok ) break;
                 j = send ( sockdesc, evmouse,
@@ -1235,6 +1134,12 @@ int	main ( int argc, char ** argv )
     // Add handlers to catch signals:
     // All do the same, terminate the program safely
     // Ctrl+C will be ignored though (SIGINT) while a connection is active
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        close ( sockint );
+        close ( sockctl );
+        exit(5);
+    }    
     signal ( SIGHUP,  &onsignal );
     signal ( SIGTERM, &onsignal );
     signal ( SIGINT,  &onsignal );
@@ -1265,6 +1170,7 @@ int	main ( int argc, char ** argv )
         tv.tv_usec = 0;
         FD_ZERO ( &fds );
         FD_SET  ( sockctl, &fds );
+        FD_SET  ( pipefd[1], &fds );
         j = select ( sockctl + 1, &fds, NULL, NULL, &tv );
         if ( j < 0 )
         {
@@ -1335,6 +1241,7 @@ int	main ( int argc, char ** argv )
         tv.tv_usec = 0;
         j = -1;
         add_filedescriptors ( &efds );
+        FD_SET  ( pipefd[1], &fds );
         while ( 0 < (j = select(maxevdevfileno+1,&efds,NULL,NULL,&tv)))
         {
             // This loop removes all input garbage that might be
@@ -1390,9 +1297,11 @@ int	main ( int argc, char ** argv )
     //i = system ( "stty echo" );	   // Set console back to normal
     close ( sockint );
     close ( sockctl );
+    close (pipefd[0]); 
+    close (pipefd[1]); 
     if ( ! skipsdp )
     {
-        sdpunregister ( sdphandle ); // Remove HID info from SDP server
+        sdpunregister(); // Remove HID info from SDP server
     }
     if ( NULL == fifoname )
     {
@@ -1450,6 +1359,7 @@ void	onsignal ( int i )
         else
         {	// Ctrl+C ignored while connected
             // because it might be meant for the remote
+            fprintf ( stderr, "The remote is connected, can't execute shutdown request\n" );
             return;
         }
       case	SIGTERM:
@@ -1458,6 +1368,10 @@ void	onsignal ( int i )
         prepareshutdown = 1;
         fprintf ( stderr, "Got shutdown request\n" );
         break;
+    }
+    if (prepareshutdown > 0) {
+        static char *finish = "finish";
+        write(pipefd[0], finish, sizeof(finish));
     }
     return;
 }
