@@ -1,0 +1,110 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+BTKbBluezProfile	server/btk_server.py	/^class BTKbBluezProfile(dbus.service.Object):$/;"	c
+BTKbDevice	server/btk_server.py	/^class BTKbDevice():$/;"	c
+BTKbService	server/btk_server.py	/^class  BTKbService(dbus.service.Object):$/;"	c
+CFLAGS	hidclient/Makefile	/^CFLAGS := $(shell pkg-config --cflags dbus-1)$/;"	m
+Cancel	server/btk_server.py	/^    def Cancel(self):$/;"	m	class:BTKbBluezProfile
+Device	keyboard/combine.py	/^class Device:$/;"	c
+EVDEVNAME	hidclient/hidclient.c	124;"	d	file:
+HIDINFO_DESC	hidclient/hidclient.c	138;"	d	file:
+HIDINFO_NAME	hidclient/hidclient.c	136;"	d	file:
+HIDINFO_PROV	hidclient/hidclient.c	137;"	d	file:
+Keyboard	keyboard/kb_client.py	/^class Keyboard():$/;"	c
+MAXEVDEVS	hidclient/hidclient.c	127;"	d	file:
+MY_ADDRESS	server/btk_server.py	/^    MY_ADDRESS="D0:C6:37:82:A1:85"$/;"	v	class:BTKbDevice
+MY_DEV_NAME	server/btk_server.py	/^    MY_DEV_NAME="DeskPi_BTKb"$/;"	v	class:BTKbDevice
+Mouse	keyboard/mouse_client.py	/^class Mouse():$/;"	c
+NewConnection	server/btk_server.py	/^    def NewConnection(self, path, fd, properties):$/;"	m	class:BTKbBluezProfile
+PROFILE_DBUS_PATH	server/btk_server.py	/^    PROFILE_DBUS_PATH="\/bluez\/yaptb\/btkb_profile" #dbus path of  the bluez profile we will create$/;"	v	class:BTKbDevice
+PSMHIDCTL	hidclient/hidclient.c	132;"	d	file:
+PSMHIDINT	hidclient/hidclient.c	133;"	d	file:
+P_CTRL	server/btk_server.py	/^    P_CTRL =17  #Service port - must match port configured in SDP record$/;"	v	class:BTKbDevice
+P_INTR	server/btk_server.py	/^    P_INTR =19  #Service port - must match port configured in SDP record#Interrrupt port  $/;"	v	class:BTKbDevice
+REPORTID_KEYBD	hidclient/hidclient.c	142;"	d	file:
+REPORTID_MOUSE	hidclient/hidclient.c	141;"	d	file:
+Release	server/btk_server.py	/^    def Release(self):$/;"	m	class:BTKbBluezProfile
+RequestDisconnection	server/btk_server.py	/^    def RequestDisconnection(self, path):$/;"	m	class:BTKbBluezProfile
+SDPRECORD	hidclient/hidclient.c	147;"	d	file:
+SDPRECORD_BYTES	hidclient/hidclient.c	156;"	d	file:
+SDP_RECORD_PATH	server/btk_server.py	/^    SDP_RECORD_PATH = sys.path[0] + "\/sdp_record.xml" #file path of the sdp record to laod$/;"	v	class:BTKbDevice
+UUID	server/btk_server.py	/^    UUID="00001124-0000-1000-8000-00805f9b34fb"$/;"	v	class:BTKbDevice
+__init__	keyboard/combine.py	/^    def __init__(self):$/;"	m	class:Device
+__init__	keyboard/kb_client.py	/^	def __init__(self):$/;"	m	class:Keyboard
+__init__	keyboard/mouse_client.py	/^    def __init__(self):$/;"	m	class:Mouse
+__init__	server/btk_server.py	/^    def __init__(self):$/;"	m	class:BTKbDevice
+__init__	server/btk_server.py	/^    def __init__(self):$/;"	m	class:BTKbService
+__init__	server/btk_server.py	/^    def __init__(self, bus, path):$/;"	m	class:BTKbBluezProfile
+add_filedescriptors	hidclient/hidclient.c	/^int	add_filedescriptors ( fd_set * fdsp )$/;"	f
+add_lang_attr	hidclient/hidclient.c	/^static void add_lang_attr(sdp_record_t *r)$/;"	f	file:
+append_variant	hidclient/hidclient.c	/^static void append_variant(DBusMessageIter *iter, int type, const void *val)$/;"	f	file:
+axis_x	hidclient/hidclient.c	/^    signed   char	axis_x; \/\/ relative movement in pixels, left\/right$/;"	m	struct:hidrep_mouse_t	file:
+axis_y	hidclient/hidclient.c	/^    signed   char	axis_y; \/\/ dito, up\/down$/;"	m	struct:hidrep_mouse_t	file:
+axis_z	hidclient/hidclient.c	/^    signed   char	axis_z; \/\/ Used for the scroll wheel (?)$/;"	m	struct:hidrep_mouse_t	file:
+btbind	hidclient/hidclient.c	/^int	btbind ( int sockfd, unsigned short port ) {$/;"	f
+btcode	hidclient/hidclient.c	/^    unsigned char	btcode;	\/\/ Fixed value for "Data Frame": 0xA1$/;"	m	struct:hidrep_mouse_t	file:
+btcode	hidclient/hidclient.c	/^    unsigned char	btcode; \/\/ Fixed value for "Data Frame": 0xA1$/;"	m	struct:hidrep_keyb_t	file:
+button	hidclient/hidclient.c	/^    unsigned char	button;	\/\/ bits 0..2 for left,right,middle, others 0$/;"	m	struct:hidrep_mouse_t	file:
+change_keyboard_state	keyboard/combine.py	/^    def change_keyboard_state(self, event):$/;"	m	class:Device
+change_state	keyboard/kb_client.py	/^	def change_state(self,event):$/;"	m	class:Keyboard
+change_state_button	keyboard/combine.py	/^    def change_state_button(self, event):$/;"	m	class:Device
+change_state_button	keyboard/mouse_client.py	/^    def change_state_button(self, event):$/;"	m	class:Mouse
+change_state_movement	keyboard/combine.py	/^    def change_state_movement(self, event):$/;"	m	class:Device
+change_state_movement	keyboard/mouse_client.py	/^    def change_state_movement(self, event):$/;"	m	class:Mouse
+cleanup_stdin	hidclient/hidclient.c	/^void	cleanup_stdin ( void )$/;"	f
+closeevents	hidclient/hidclient.c	/^void	closeevents ( void )$/;"	f
+closefifo	hidclient/hidclient.c	/^void	closefifo ( void )$/;"	f
+combined_event_loop	keyboard/combine.py	/^    def combined_event_loop(self):$/;"	m	class:Device
+connectionok	hidclient/hidclient.c	/^char		connectionok	 = 0;$/;"	v
+convert	keyboard/keymap.py	/^def convert(evdev_keycode):$/;"	f
+debugevents	hidclient/hidclient.c	/^int		debugevents      = 0;	\/\/ bitmask for debugging event data$/;"	v
+dict_append_basic	hidclient/hidclient.c	/^static void dict_append_basic(DBusMessageIter *dict, int key_type,$/;"	f	file:
+dosdpregistration	hidclient/hidclient.c	/^int	dosdpregistration ( void )$/;"	f
+event_loop	keyboard/kb_client.py	/^	def event_loop(self):$/;"	m	class:Keyboard
+event_loop	keyboard/mouse_client.py	/^    def event_loop(self):$/;"	m	class:Mouse
+eventdevs	hidclient/hidclient.c	/^int		eventdevs[MAXEVDEVS];	\/\/ file descriptors$/;"	v
+fd	server/btk_server.py	/^    fd = -1$/;"	v	class:BTKbBluezProfile
+g_dbus_dict_append_entry	hidclient/hidclient.c	/^void g_dbus_dict_append_entry(DBusMessageIter *dict,$/;"	f
+get_dev_address	server/btk_server.py	/^    def get_dev_address(self):$/;"	m	class:BTKbDevice
+hidrep_keyb_t	hidclient/hidclient.c	/^struct hidrep_keyb_t$/;"	s	file:
+hidrep_mouse_t	hidclient/hidclient.c	/^struct hidrep_mouse_t$/;"	s	file:
+init_bluez_profile	server/btk_server.py	/^    def init_bluez_profile(self):$/;"	m	class:BTKbDevice
+init_bt_device	server/btk_server.py	/^    def init_bt_device(self):$/;"	m	class:BTKbDevice
+initevents	hidclient/hidclient.c	/^int	initevents ( unsigned int evdevmask, int mutex11 )$/;"	f
+initfifo	hidclient/hidclient.c	/^int	initfifo ( char *filename )$/;"	f
+kb	keyboard/kb_client.py	/^	kb = Keyboard()$/;"	v	class:Keyboard
+kb	keyboard/mouse_client.py	/^    kb = Mouse()$/;"	v
+key	hidclient/hidclient.c	/^    unsigned char	key[8]; \/\/ Currently pressed keys, max 8 at once$/;"	m	struct:hidrep_keyb_t	file:
+keytable	keyboard/keymap.py	/^keytable = {$/;"	v
+list_input_devices	hidclient/hidclient.c	/^int	list_input_devices ()$/;"	f
+listen	server/btk_server.py	/^    def listen(self):$/;"	m	class:BTKbDevice
+main	hidclient/hidclient.c	/^int	main ( int argc, char ** argv )$/;"	f
+modifierkeys	hidclient/hidclient.c	/^char		modifierkeys	 = 0;	\/\/ and for shift\/ctrl\/alt... status$/;"	v
+modify	hidclient/hidclient.c	/^    unsigned char	modify; \/\/ Modifier keys (shift, alt, the like)$/;"	m	struct:hidrep_keyb_t	file:
+modkey	keyboard/keymap.py	/^def modkey(evdev_keycode):$/;"	f
+modkeys	keyboard/keymap.py	/^modkeys = {$/;"	v
+mousebuttons	hidclient/hidclient.c	/^char		mousebuttons	 = 0;	\/\/ storage for button status$/;"	v
+myservice	server/btk_server.py	/^    myservice = BTKbService()$/;"	v	class:BTKbService
+onsignal	hidclient/hidclient.c	/^void	onsignal ( int i )$/;"	f
+parse_events	hidclient/hidclient.c	/^int	parse_events ( fd_set * efds, int sockdesc )$/;"	f
+power_up	server/btk_server.py	/^    def power_up(self):$/;"	m	class:BTKbDevice
+prepareshutdown	hidclient/hidclient.c	/^char		prepareshutdown	 = 0;	\/\/ Set if shutdown was requested$/;"	v
+pressedkey	hidclient/hidclient.c	/^char		pressedkey[8]	 = { 0, 0, 0, 0,  0, 0, 0, 0 };$/;"	v
+read_sdp_service_record	server/btk_server.py	/^    def read_sdp_service_record(self):$/;"	m	class:BTKbDevice
+rep_id	hidclient/hidclient.c	/^    unsigned char	rep_id; \/\/ Will be set to REPORTID_KEYBD for "keyboard"$/;"	m	struct:hidrep_keyb_t	file:
+rep_id	hidclient/hidclient.c	/^    unsigned char	rep_id; \/\/ Will be set to REPORTID_MOUSE for "mouse"$/;"	m	struct:hidrep_mouse_t	file:
+sdp_seq_alloc_with_length	hidclient/hidclient.c	/^sdp_data_t *sdp_seq_alloc_with_length(void **dtds, void **values, int *length,$/;"	f
+sdphandle	hidclient/hidclient.c	/^uint32_t	sdphandle	 = 0;	\/\/ To be used to "unregister" on exit$/;"	v
+sdpunregister	hidclient/hidclient.c	/^void	sdpunregister ( uint32_t handle )$/;"	f
+send_input	keyboard/kb_client.py	/^   	def send_input(self):$/;"	f	function:Keyboard.event_loop
+send_input	keyboard/mouse_client.py	/^    def send_input(self):$/;"	m	class:Mouse
+send_keyboard_input	keyboard/combine.py	/^    def send_keyboard_input(self):$/;"	m	class:Device
+send_keys	server/btk_server.py	/^    def send_keys(self,keys):$/;"	m	class:BTKbService
+send_mouse_input	keyboard/combine.py	/^    def send_mouse_input(self):$/;"	m	class:Device
+send_string	server/btk_server.py	/^    def send_string(self,message):$/;"	m	class:BTKbDevice
+showhelp	hidclient/hidclient.c	/^void	showhelp ( void )$/;"	f
+x11handles	hidclient/hidclient.c	/^int		x11handles[MAXEVDEVS];$/;"	v

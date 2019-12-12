@@ -32,4 +32,6 @@ For this to work, the DBUS system bus needs to be configured to add the btkserve
 
 # Build hidclient
 
-> sudo apt-get install libbluetooth-dev
+> sudo apt-get install libbluetooth-dev  libdbus-1-dev
+
+> sudo apt install dbus-cpp-dev-examples

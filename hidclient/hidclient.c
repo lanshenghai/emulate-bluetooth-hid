@@ -117,6 +117,7 @@
 #include <bluetooth/l2cap.h>
 #include <bluetooth/sdp.h>
 #include <bluetooth/sdp_lib.h>
+#include <gio/gio.h>
 
 //***************** Static definitions
 // Where to find event devices (that must be readable by current user)
@@ -244,40 +245,23 @@ sdp_data_t *sdp_seq_alloc_with_length(void **dtds, void **values, int *length,
     return sdp_data_alloc_with_length(SDP_SEQ8, seq, totall);
 }
 
-static void append_variant(DBusMessageIter *iter, int type, const void *val)
+GVariant *build_register_profile_params(char *object_path, char *uuid, char *service_record)
 {
-    DBusMessageIter value;
-    char sig[2] = { type, '\0' };
-    dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, sig, &value);
-    dbus_message_iter_append_basic(&value, type, val);
-    dbus_message_iter_close_container(iter, &value);
-}
+    GVariantBuilder *builder;
+    GVariant *value;
 
-static void dict_append_basic(DBusMessageIter *dict, int key_type,
-                    const void *key, int type, void *val)
-{
-    DBusMessageIter entry;
-
-    if (type == DBUS_TYPE_STRING) {
-        const char *str = *((const char **) val);
-        if (str == NULL)
-            return;
-    }
-
-    dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY,
-                            NULL, &entry);
-
-    dbus_message_iter_append_basic(&entry, key_type, key);
-
-    append_variant(&entry, type, val);
-
-    dbus_message_iter_close_container(dict, &entry);
-}
-
-void g_dbus_dict_append_entry(DBusMessageIter *dict,
-                    const char *key, int type, void *val)
-{
-    dict_append_basic(dict, DBUS_TYPE_STRING, &key, type, val);
+    builder = g_variant_builder_new (G_VARIANT_TYPE ("(osa{sv})"));
+    g_variant_builder_add (builder, "o", object_path);
+    g_variant_builder_add (builder, "s", uuid);
+    g_variant_builder_open (builder, G_VARIANT_TYPE ("a{sv}"));
+    g_variant_builder_add (builder, "{sv}", "ServiceRecord", g_variant_new_string (service_record));
+    g_variant_builder_add (builder, "{sv}", "Role", g_variant_new_string ("server"));
+    g_variant_builder_add (builder, "{sv}", "RequireAuthentication", g_variant_new_boolean(0));
+    g_variant_builder_add (builder, "{sv}", "RequireAuthorization", g_variant_new_boolean(0));
+    g_variant_builder_close (builder);
+    value = g_variant_builder_end (builder);
+    g_variant_builder_unref (builder);
+    return value;
 }
 
 /*
@@ -421,75 +405,44 @@ int	dosdpregistration ( void )
     // // deleting the service info when this program terminates)
     // sdphandle = record.handle;
     //     fprintf ( stdout, "HID keyboard/mouse service registered\n" );
-    DBusConnection* conn;
-    DBusMessage *msg;
-    DBusMessageIter iter, opt;
-    int fp;
-    char *profile_dbus_path = "/bluez/yaptb/btkb_profile/00001124_0000_1000_8000_00805f9b34fb";
+    int fd;
+    char *profile_dbus_path = "/bluez/yaptb/btkb_profile";
     char *uuid="00001124-0000-1000-8000-00805f9b34fb";
-    DBusMessageIter entry;
-    char *buffer;
     size_t buffer_size = 0;
-    char *role = "server";
-    int require_authentication = 0; 
-    int require_authorizaton = 0; 
-    DBusError err;
-    dbus_bool_t ret;
-    DBusPendingCall* pending;
+    char *buffer;
 
-    conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
-    if (!conn) {
-        fprintf (stderr, "%s: %s\n",
-                err.name, err.message);
-        exit(-1);
+    GDBusConnection *connection;
+    GError *err = NULL;
+    connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
+    if (err != NULL) {
+        fprintf (stderr, "Unable to read file: %s\n", err->message);
+        return -1;
     }
-
-    msg = dbus_message_new_method_call("org.bluez", "/org/bluez",
-                        "org.bluez.ProfileManager1",
-                        "RegisterProfile");
-    dbus_message_iter_init_append(msg, &iter);
-    dbus_message_iter_append_basic(&iter, DBUS_TYPE_OBJECT_PATH, &profile_dbus_path);
-    dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &uuid);
-    dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY,
-    				DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
-    				DBUS_TYPE_STRING_AS_STRING
-    				DBUS_TYPE_VARIANT_AS_STRING
-    				DBUS_DICT_ENTRY_END_CHAR_AS_STRING,
-    				&opt);
-    // dbus_message_iter_open_container(&iter, DBUS_TYPE_DICT_ENTRY, NULL, &opt);
-
-    fp = open("../server/sdp_record.xml", O_RDONLY);
-    buffer_size = lseek(fp, 0, SEEK_END);
+    fd = open("../server/sdp_record.xml", O_RDONLY);
+    buffer_size = lseek(fd, 0, SEEK_END);
     buffer = (char*)malloc(buffer_size);
-    read(fp, buffer, buffer_size);
-    printf("buffer size %ld\n", buffer_size);
+    lseek(fd, 0, SEEK_SET);
+    read(fd, buffer, buffer_size);
+    close(fd);
 
-    g_dbus_dict_append_entry(&opt, "ServiceRecord", DBUS_TYPE_STRING, &buffer);
-    free(buffer);
-    g_dbus_dict_append_entry(&opt, "Role", DBUS_TYPE_STRING, &role);
-    g_dbus_dict_append_entry(&opt, "RequireAuthentication", DBUS_TYPE_BOOLEAN, &require_authentication);
-    g_dbus_dict_append_entry(&opt, "RequireAuthorization", DBUS_TYPE_BOOLEAN, &require_authorizaton);
-    dbus_message_iter_close_container(&iter, &opt);
-
-	ret = dbus_connection_send(conn, msg, NULL);
-
-	if (ret == FALSE) {
-		perror("Unable to send message (passing fd blocked?)");
-        exit(-1);
-	}
-    // send message and get a handle for a reply
-   if (!dbus_connection_send_with_reply (conn, msg, &pending, -1)) { // -1 is default timeout
-      fprintf(stderr, "Out Of Memory!\n"); 
-      exit(1);
-   }
-   if (NULL == pending) { 
-      fprintf(stderr, "Pending Call Null\n"); 
-      exit(1); 
-   }
-   dbus_connection_flush(conn);
+    g_dbus_connection_call_sync (connection,
+                                "org.bluez",
+                                "/org/bluez",
+                                "org.bluez.ProfileManager1",
+                                "RegisterProfile",
+                                // g_variant_new("(os)",
+                                //     "/bluez/yaptb/btkb_profile",
+                                //     "00001124-0000-1000-8000-00805f9b34fb"
+                                // ),
+                                build_register_profile_params(profile_dbus_path, uuid, buffer),
+                                NULL,
+                                G_DBUS_CALL_FLAGS_NONE,
+                                -1,
+                                NULL,
+                                &err);
    
-   printf("Request Sent\n");
-
+    printf("Request Sent\n");
+    free(buffer);
     return 0;
 }
 
@@ -1256,6 +1209,15 @@ int	main ( int argc, char ** argv )
         fprintf ( stderr, "Failed to generate bluetooth sockets\n" );
         return	2;
     }
+    int reuse = 1;
+    if (setsockopt(sockint, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+        perror("setsockopt(SO_REUSEADDR) failed");
+    if (setsockopt(sockint, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuse, sizeof(reuse)) < 0) 
+        perror("setsockopt(SO_REUSEPORT) failed");
+    if (setsockopt(sockctl, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+        perror("setsockopt(SO_REUSEADDR) failed");
+    if (setsockopt(sockctl, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuse, sizeof(reuse)) < 0) 
+        perror("setsockopt(SO_REUSEPORT) failed");
     if ( btbind ( sockint, PSMHIDINT ) || btbind ( sockctl, PSMHIDCTL ))
     {
         fprintf ( stderr, "Failed to bind sockets (%d/%d) "
@@ -1475,6 +1437,7 @@ void	showhelp ( void )
 
 void	onsignal ( int i )
 {
+    fprintf ( stderr, "Received signal %d\n", i);
     // Shutdown should be done if:
     switch ( i )
     {

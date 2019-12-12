@@ -72,12 +72,12 @@ class BTKbDevice():
 
         #set the device class to a keybord and set the name
         #os.system("hciconfig hcio class 0x002540")
-        os.system("hciconfig hcio class 0x0025c0")
+        os.system("hciconfig hci0 class 0x0025c0")
         #os.system("hciconfig hcio class 0x005c0")
-        os.system("hciconfig hcio name " + BTKbDevice.MY_DEV_NAME)
+        os.system("hciconfig hci0 name " + BTKbDevice.MY_DEV_NAME)
 
         #make the device discoverable
-        os.system("hciconfig hcio piscan")
+        os.system("hciconfig hci0 piscan")
 
 
     #set up a bluez profile to advertise device capabilities from a loaded service record
