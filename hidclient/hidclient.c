@@ -110,15 +110,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <linux/input.h>
-#include <dbus/dbus.h>
 #include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
 #include <bluetooth/l2cap.h>
-#include <bluetooth/sdp.h>
-#include <bluetooth/sdp_lib.h>
 #include <gio/gio.h>
-#include <libudev.h>
 
 //***************** Static definitions
 // Where to find event devices (that must be readable by current user)
@@ -140,8 +134,6 @@
 // These numbers must also be used in the HID descriptor binary file
 #define	REPORTID_MOUSE	1
 #define	REPORTID_KEYBD	2
-
-#define SUBSYSTEM "usb"
 
 //***************** Function prototypes
 int  dosdpregistration(void);
@@ -187,7 +179,6 @@ char		pressedkey[8]	 = { 0, 0, 0, 0,  0, 0, 0, 0 };
 char    connectionok	 = 0;
 int     debugevents      = 0;	// bitmask for debugging event data
 int     pipefd[2];  // used to exit the select loop
-int     mon_fd = -1; // monitor the USB dev change
 
 //********************** SDP report XML
 const char *sdp_record = 
@@ -597,15 +588,6 @@ int	add_filedescriptors ( fd_set * fdsp )
             }
         }
     }
-
-    if (mon_fd >= 0)
-    {
-        FD_SET(mon_fd, fdsp);
-        if (mon_fd > j)
-        {
-            j = mon_fd;
-        }
-    } 
     return	j;
 }
 
@@ -681,11 +663,6 @@ int	list_input_devices ()
     }
     free ( xinlist );
     return	0;
-}
-
-void check_dev_change()
-{
-
 }
 
 /*	parse_events - At least one filedescriptor can now be read
@@ -1031,22 +1008,7 @@ int	parse_events ( fd_set * efds, int sockdesc )
             break;
         }
     }
-
-    if (FD_ISSET (mon_fd, efds))
-    {
-        check_dev_change();
-    }
     return	0;
-}
-
-static int monitor_devices(struct udev* udev)
-{
-    struct udev_monitor* mon = udev_monitor_new_from_netlink(udev, "udev");
-
-    udev_monitor_filter_add_match_subsystem_devtype(mon, SUBSYSTEM, NULL);
-    udev_monitor_enable_receiving(mon);
-
-    return udev_monitor_get_fd(mon);
 }
 
 int	main ( int argc, char ** argv )
@@ -1187,8 +1149,6 @@ int	main ( int argc, char ** argv )
     fprintf ( stdout, "The HID-Client is now ready to accept connections "
             "from another machine\n" );
     //i = system ( "stty -echo" );	// Disable key echo to the console
-    udev = udev_new();
-    mon_fd = monitor_devices(udev);
     while ( 0 == prepareshutdown )
     {	// Wait for any shutdown-event to occur
         sint = sctl = 0;
@@ -1342,8 +1302,6 @@ int	main ( int argc, char ** argv )
     close ( sockctl );
     close (pipefd[0]); 
     close (pipefd[1]); 
-    close (mon_fd);
-    udev_unref(udev);
     if ( ! skipsdp )
     {
         sdpunregister(); // Remove HID info from SDP server
