@@ -36,7 +36,7 @@ For this to work, the DBUS system bus needs to be configured to add the btkserve
 
 > sudo apt install dbus-cpp-dev-examples
 
-> sudo apt install libglib2.0-dev
+> sudo apt install libglib2.0-dev libudev-dev
 
 # How to test it
 

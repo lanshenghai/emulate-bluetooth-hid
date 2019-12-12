@@ -118,6 +118,7 @@
 #include <bluetooth/sdp.h>
 #include <bluetooth/sdp_lib.h>
 #include <gio/gio.h>
+#include <libudev.h>
 
 //***************** Static definitions
 // Where to find event devices (that must be readable by current user)
@@ -139,6 +140,8 @@
 // These numbers must also be used in the HID descriptor binary file
 #define	REPORTID_MOUSE	1
 #define	REPORTID_KEYBD	2
+
+#define SUBSYSTEM "usb"
 
 //***************** Function prototypes
 int  dosdpregistration(void);
@@ -181,125 +184,126 @@ int		x11handles[MAXEVDEVS];
 char		mousebuttons	 = 0;	// storage for button status
 char		modifierkeys	 = 0;	// and for shift/ctrl/alt... status
 char		pressedkey[8]	 = { 0, 0, 0, 0,  0, 0, 0, 0 };
-char		connectionok	 = 0;
-int		debugevents      = 0;	// bitmask for debugging event data
-int pipefd[2];  // used to exit the select loop
+char    connectionok	 = 0;
+int     debugevents      = 0;	// bitmask for debugging event data
+int     pipefd[2];  // used to exit the select loop
+int     mon_fd = -1; // monitor the USB dev change
 
 //********************** SDP report XML
 const char *sdp_record = 
-"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
-""
-"<record>"
-"    <attribute id=\"0x0001\">    <!-- SDP_ATTR_SVCLASS_ID_LIST -->"
-"        <sequence>"
-"            <uuid value=\"0x1124\" />"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x0004\"> <!-- SDP_ATTR_PROTO_DESC_LIST    -->"
-"        <sequence>"
-"            <sequence>"
-"                <uuid value=\"0x0100\" />"
-"                <uint16 value=\"0x0011\" />"
-"            </sequence>"
-"            <sequence>"
-"                <uuid value=\"0x0011\" />"
-"            </sequence>"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x0005\">  <!-- SDP_ATTR_BROWSE_GRP_LIST -->"
-"        <sequence>"
-"            <uuid value=\"0x1002\" />"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x0006\">  <!-- SDP_ATTR_LANG_BASE_ATTR_ID_LIST        -->"
-"        <sequence>"
-"            <uint16 value=\"0x656e\" />    <!-- Natural Language Code = English -->"
-"            <uint16 value=\"0x006a\" />     <!-- Character Encoding = UTF-8 -->"
-"            <uint16 value=\"0x0100\" />    <!-- String Base = 0x0100 -->"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x0009\">    <!-- SDP_ATTR_PFILE_DESC_LIST -->"
-"        <sequence>"
-"            <sequence>"
-"                <uuid value=\"0x1124\" />    <!-- Human Interface Device -->"
-"                <uint16 value=\"0x0100\" />     <!-- L2CAP -->"
-"            </sequence>"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x000d\">  <!-- Additional Protocol Descriptor Lists -->"
-"        <sequence>"
-"            <sequence>"
-"                <sequence>"
-"                    <uuid value=\"0x0100\" />"
-"                    <uint16 value=\"0x0013\" />"
-"                </sequence>"
-"                <sequence>"
-"                    <uuid value=\"0x0011\" />"
-"                </sequence>"
-"            </sequence>"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x0100\">    <!-- service name  -->"
-"        <text value=\"Raspberry Pi Virtual Keyboard\" />"
-"    </attribute>"
-"    <attribute id=\"0x0101\">    <!-- service description -->"
-"        <text value=\"USB > BT Keyboard\" />"
-"    </attribute>"
-"    <attribute id=\"0x0102\">    <!-- service provider -->"
-"        <text value=\"Raspberry Pi\" />"
-"    </attribute>"
-"    <attribute id=\"0x0200\"> <!-- SDP_ATTR_HID_DEVICE_RELEASE_NUMBER -->"
-"        <uint16 value=\"0x0100\" />"
-"    </attribute>"
-"    <attribute id=\"0x0201\"> <!-- HID Parser Version = 1.11         -->"
-"        <uint16 value=\"0x0111\" />"
-"    </attribute>"
-"    <attribute id=\"0x0202\">    <!-- HID Subclass = Not Boot Mouse -->"
-"        <uint8 value=\"0x40\" />"
-"    </attribute>"
-"    <attribute id=\"0x0203\"> <!-- HID Country Code = ??         -->"
-"        <uint8 value=\"0x00\" />"
-"    </attribute>"
-"    <attribute id=\"0x0204\">    <!-- HID Virtual Cable = False            -->"
-"        <boolean value=\"false\" />"
-"    </attribute>"
-"    <attribute id=\"0x0205\"> <!-- HID Reconnect Initiate = False -->"
-"        <boolean value=\"false\" />"
-"    </attribute>"
-"    <attribute id=\"0x0206\">    <!-- HID Descriptor List -->"
-"        <sequence>"
-"            <sequence>"
-"                <uint8 value=\"0x22\" />  <!-- Class Descriptor Type = Report -->"
-"                <text encoding=\"hex\" value=\"05010902A10185010901A1000509190129031500250175019503810275059501810105010930093109381581257F750895038106C0C005010906A1018502A100050719E029E71500250175019508810295087508150025650507190029658100C0C0\"/>"
-"            </sequence>"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x0207\">    <!--HID LANGID Base List        -->"
-"        <sequence>    <!-- HID LANGID Base -->"
-"            <sequence>"
-"                <uint16 value=\"0x0409\" />    <!-- Natural Language Code = English (United States) -->"
-"                <uint16 value=\"0x0100\" />    <!-- String Base = 0x0100 -->"
-"            </sequence>"
-"        </sequence>"
-"    </attribute>"
-"    <attribute id=\"0x020b\">    <!-- SDP_ATTR_HID_PROFILE_VERSION        -->"
-"        <uint16 value=\"0x0100\" />"
-"    </attribute>"
-"    <attribute id=\"0x020c\">    <!--SDP_ATTR_HID_SUPERVISION_TIMEOUT    -->"
-"        <uint16 value=\"0x0c80\" />"
-"    </attribute>"
-"    <attribute id=\"0x020d\">    <!-- SDP_ATTR_HID_NORMALLY_CONNECTABLE -->"
-"        <boolean value=\"true\" />"
-"    </attribute>"
-"    <attribute id=\"0x020e\">    <!--SDP_ATTR_HID_BOOT_DEVICE-->"
-"        <boolean value=\"false\" />"
-"    </attribute>"
-"    <attribute id=\"0x020f\">"
-"        <uint16 value=\"0x0640\" />"
-"    </attribute>"
-"    <attribute id=\"0x0210\">"
-"        <uint16 value=\"0x0320\" />"
-"    </attribute>"
+"<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
+"\n"
+"<record>\n"
+"    <attribute id=\"0x0001\">    <!-- SDP_ATTR_SVCLASS_ID_LIST -->\n"
+"        <sequence>\n"
+"            <uuid value=\"0x1124\" />\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0004\"> <!-- SDP_ATTR_PROTO_DESC_LIST    -->\n"
+"        <sequence>\n"
+"            <sequence>\n"
+"                <uuid value=\"0x0100\" />\n"
+"                <uint16 value=\"0x0011\" />\n"
+"            </sequence>\n"
+"            <sequence>\n"
+"                <uuid value=\"0x0011\" />\n"
+"            </sequence>\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0005\">  <!-- SDP_ATTR_BROWSE_GRP_LIST -->\n"
+"        <sequence>\n"
+"            <uuid value=\"0x1002\" />\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0006\">  <!-- SDP_ATTR_LANG_BASE_ATTR_ID_LIST        -->\n"
+"        <sequence>\n"
+"            <uint16 value=\"0x656e\" />    <!-- Natural Language Code = English -->\n"
+"            <uint16 value=\"0x006a\" />     <!-- Character Encoding = UTF-8 -->\n"
+"            <uint16 value=\"0x0100\" />    <!-- String Base = 0x0100 -->\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0009\">    <!-- SDP_ATTR_PFILE_DESC_LIST -->\n"
+"        <sequence>\n"
+"            <sequence>\n"
+"                <uuid value=\"0x1124\" />    <!-- Human Interface Device -->\n"
+"                <uint16 value=\"0x0100\" />     <!-- L2CAP -->\n"
+"            </sequence>\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x000d\">  <!-- Additional Protocol Descriptor Lists -->\n"
+"        <sequence>\n"
+"            <sequence>\n"
+"                <sequence>\n"
+"                    <uuid value=\"0x0100\" />\n"
+"                    <uint16 value=\"0x0013\" />\n"
+"                </sequence>\n"
+"                <sequence>\n"
+"                    <uuid value=\"0x0011\" />\n"
+"                </sequence>\n"
+"            </sequence>\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0100\">    <!-- service name  -->\n"
+"        <text value=\"Raspberry Pi Virtual Keyboard\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0101\">    <!-- service description -->\n"
+"        <text value=\"USB > BT Keyboard\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0102\">    <!-- service provider -->\n"
+"        <text value=\"Raspberry Pi\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0200\"> <!-- SDP_ATTR_HID_DEVICE_RELEASE_NUMBER -->\n"
+"        <uint16 value=\"0x0100\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0201\"> <!-- HID Parser Version = 1.11         -->\n"
+"        <uint16 value=\"0x0111\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0202\">    <!-- HID Subclass = Not Boot Mouse -->\n"
+"        <uint8 value=\"0x40\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0203\"> <!-- HID Country Code = ??         -->\n"
+"        <uint8 value=\"0x00\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0204\">    <!-- HID Virtual Cable = False            -->\n"
+"        <boolean value=\"false\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0205\"> <!-- HID Reconnect Initiate = False -->\n"
+"        <boolean value=\"false\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0206\">    <!-- HID Descriptor List -->\n"
+"        <sequence>\n"
+"            <sequence>\n"
+"                <uint8 value=\"0x22\" />  <!-- Class Descriptor Type = Report -->\n"
+"                <text encoding=\"hex\" value=\"05010902A10185010901A1000509190129031500250175019503810275059501810105010930093109381581257F750895038106C0C005010906A1018502A100050719E029E71500250175019508810295087508150025650507190029658100C0C0\"/>\n"
+"            </sequence>\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0207\">    <!--HID LANGID Base List        -->\n"
+"        <sequence>    <!-- HID LANGID Base -->\n"
+"            <sequence>\n"
+"                <uint16 value=\"0x0409\" />    <!-- Natural Language Code = English (United States) -->\n"
+"                <uint16 value=\"0x0100\" />    <!-- String Base = 0x0100 -->\n"
+"            </sequence>\n"
+"        </sequence>\n"
+"    </attribute>\n"
+"    <attribute id=\"0x020b\">    <!-- SDP_ATTR_HID_PROFILE_VERSION        -->\n"
+"        <uint16 value=\"0x0100\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x020c\">    <!--SDP_ATTR_HID_SUPERVISION_TIMEOUT    -->\n"
+"        <uint16 value=\"0x0c80\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x020d\">    <!-- SDP_ATTR_HID_NORMALLY_CONNECTABLE -->\n"
+"        <boolean value=\"true\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x020e\">    <!--SDP_ATTR_HID_BOOT_DEVICE-->\n"
+"        <boolean value=\"false\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x020f\">\n"
+"        <uint16 value=\"0x0640\" />\n"
+"    </attribute>\n"
+"    <attribute id=\"0x0210\">\n"
+"        <uint16 value=\"0x0320\" />\n"
+"    </attribute>\n"
 "</record>";
 
 GVariant *build_register_profile_params(const char *object_path, const char *uuid, const char *service_record)
@@ -593,6 +597,15 @@ int	add_filedescriptors ( fd_set * fdsp )
             }
         }
     }
+
+    if (mon_fd >= 0)
+    {
+        FD_SET(mon_fd, fdsp);
+        if (mon_fd > j)
+        {
+            j = mon_fd;
+        }
+    } 
     return	j;
 }
 
@@ -668,6 +681,11 @@ int	list_input_devices ()
     }
     free ( xinlist );
     return	0;
+}
+
+void check_dev_change()
+{
+
 }
 
 /*	parse_events - At least one filedescriptor can now be read
@@ -1013,7 +1031,22 @@ int	parse_events ( fd_set * efds, int sockdesc )
             break;
         }
     }
+
+    if (FD_ISSET (mon_fd, efds))
+    {
+        check_dev_change();
+    }
     return	0;
+}
+
+static int monitor_devices(struct udev* udev)
+{
+    struct udev_monitor* mon = udev_monitor_new_from_netlink(udev, "udev");
+
+    udev_monitor_filter_add_match_subsystem_devtype(mon, SUBSYSTEM, NULL);
+    udev_monitor_enable_receiving(mon);
+
+    return udev_monitor_get_fd(mon);
 }
 
 int	main ( int argc, char ** argv )
@@ -1033,6 +1066,8 @@ int	main ( int argc, char ** argv )
     int			evdevmask = 0;// If restricted to using only one evdev
     int			mutex11 = 0;      // try to "mute" in x11?
     char			*fifoname = NULL; // Filename for fifo, if applicable
+    struct udev* udev;
+
     // Parse command line
     for ( i = 1; i < argc; ++i )
     {
@@ -1101,6 +1136,12 @@ int	main ( int argc, char ** argv )
         fprintf ( stderr, "Failed to organize event input.\n" );
         return	13;
     }
+    
+    system("hciconfig hci0 up");
+    system("hciconfig hci0 class 0x0025c0");
+    system("hciconfig hci0 name RaspberryPiVKBD");
+    system("hciconfig hci0 piscan");
+
     sockint = socket ( AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP );
     sockctl = socket ( AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP );
     if ( ( 0 > sockint ) || ( 0 > sockctl ) )
@@ -1146,6 +1187,8 @@ int	main ( int argc, char ** argv )
     fprintf ( stdout, "The HID-Client is now ready to accept connections "
             "from another machine\n" );
     //i = system ( "stty -echo" );	// Disable key echo to the console
+    udev = udev_new();
+    mon_fd = monitor_devices(udev);
     while ( 0 == prepareshutdown )
     {	// Wait for any shutdown-event to occur
         sint = sctl = 0;
@@ -1299,6 +1342,8 @@ int	main ( int argc, char ** argv )
     close ( sockctl );
     close (pipefd[0]); 
     close (pipefd[1]); 
+    close (mon_fd);
+    udev_unref(udev);
     if ( ! skipsdp )
     {
         sdpunregister(); // Remove HID info from SDP server
