@@ -15,7 +15,8 @@ case $1 in
         echo "starting  hidclient...."
 		/etc/init.d/bluetooth stop
 		/usr/sbin/bluetoothd -p time > /dev/null 2>&1 &
-		/home/pi/emulate-bluetooth-hid/hidclient > /dev/null 2>&1 &
+        sleep 2
+		/home/pi/emulate-bluetooth-hid/hidclient/hidclient > /dev/null 2>&1 &
     ;;
     stop)
         echo "stoping hidclient...."
@@ -25,3 +26,4 @@ case $1 in
     *)
         echo "Usage: $0 (start|stop)"
     ;;
+esac
