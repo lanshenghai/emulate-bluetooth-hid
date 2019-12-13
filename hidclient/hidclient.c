@@ -176,7 +176,6 @@ int		x11handles[MAXEVDEVS];
 char		mousebuttons	 = 0;	// storage for button status
 char		modifierkeys	 = 0;	// and for shift/ctrl/alt... status
 char		pressedkey[8]	 = { 0, 0, 0, 0,  0, 0, 0, 0 };
-char    connectionok	 = 0;
 int     debugevents      = 0;	// bitmask for debugging event data
 
 //********************** SDP report XML
@@ -743,8 +742,6 @@ int	parse_events ( fd_set * efds, int sockdesc )
                 evmouse->axis_x =
                 evmouse->axis_y =
                 evmouse->axis_wheel = 0;
-                if ( ! connectionok )
-                    break;
                 j = send ( sockdesc, evmouse,
                     sizeof(struct hidrep_mouse_t),
                     MSG_NOSIGNAL );
@@ -758,8 +755,6 @@ int	parse_events ( fd_set * efds, int sockdesc )
                 // When pressed: abort connection
                 if ( inevent->value == 0 )
                 {
-                    if ( connectionok )
-                    {
                     evkeyb->btcode=0xA1;
                     evkeyb->rep_id=REPORTID_KEYBD;
                     memset ( evkeyb->key, 0, 8 );
@@ -768,7 +763,6 @@ int	parse_events ( fd_set * efds, int sockdesc )
                       sizeof(struct hidrep_keyb_t),
                       MSG_NOSIGNAL );
                     close ( sockdesc );
-                    }
                     // If also LCtrl+Alt pressed:
                     // Terminate program
                     if (( modifierkeys & 0x5 ) == 0x5 )
@@ -951,7 +945,6 @@ int	parse_events ( fd_set * efds, int sockdesc )
                 }
                 memcpy ( evkeyb->key, pressedkey, 8 );
                 evkeyb->modify = modifierkeys;
-                if ( ! connectionok ) break;
                 j = send ( sockdesc, evkeyb,
                     sizeof(struct hidrep_keyb_t),
                     MSG_NOSIGNAL );
@@ -987,7 +980,6 @@ int	parse_events ( fd_set * efds, int sockdesc )
                 evmouse->axis_wheel =
                     ( inevent->code >= REL_Z ?
                       inevent->value : 0 );
-                if ( ! connectionok ) break;
                 j = send ( sockdesc, evmouse,
                     sizeof(struct hidrep_mouse_t),
                     MSG_NOSIGNAL );
@@ -1245,10 +1237,6 @@ int	main ( int argc, char ** argv )
             }
             continue;
         }
-        ba2str ( &l2a.l2_bdaddr, badr );
-        badr[39] = 0;
-        fprintf ( stdout, "Incoming connection from node [%s] "
-                "accepted and established.\n", badr );
         while ( 0 < (j = evt_select(0, 0, &efds)))
         {
             // This loop removes all input garbage that might be
@@ -1282,7 +1270,10 @@ int	main ( int argc, char ** argv )
         usleep ( 500000 ); // Sleep 0.5 secs between connections
                    // to not be flooded
     }
-    //i = system ( "stty echo" );	   // Set console back to normal
+    // After force disconnected, it has to powerdown immediatly, 
+    // Otherwise, Windows will try 3 times to connect.
+    // If all of them are fail, Windows will think it's a wrong device, and don't try to reconnect forever.
+    system("hciconfig hci0 down");
     close ( sockint );
     close ( sockctl );
     if ( ! skipsdp )
