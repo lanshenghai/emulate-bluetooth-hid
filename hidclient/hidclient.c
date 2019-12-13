@@ -440,7 +440,6 @@ int	initevents ( unsigned int evdevmask, int mutex11 )
     char	*xinlist = NULL;
     FILE	*pf;
     char	*p, *q;
-    int flags;
     if ( mutex11 )
     {
         if ( NULL == ( xinlist = malloc ( 4096 ) ) )
@@ -497,8 +496,6 @@ int	initevents ( unsigned int evdevmask, int mutex11 )
                         }
                     }
                 }
-                flags = fcntl(eventdevs[i], F_GETFL, 0);
-                fcntl(eventdevs[i], F_SETFL, flags | O_NONBLOCK);
                 if ( k >= 0 ) {
                     sprintf ( xinlist+3801, "xinput set-int-prop %d \"Device "\
                         "Enabled\" 8 0", k );
