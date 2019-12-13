@@ -178,7 +178,6 @@ char		modifierkeys	 = 0;	// and for shift/ctrl/alt... status
 char		pressedkey[8]	 = { 0, 0, 0, 0,  0, 0, 0, 0 };
 char    connectionok	 = 0;
 int     debugevents      = 0;	// bitmask for debugging event data
-int     pipefd[2];  // used to exit the select loop
 
 //********************** SDP report XML
 const char *sdp_record = 
@@ -442,6 +441,7 @@ int	initevents ( unsigned int evdevmask, int mutex11 )
     char	*xinlist = NULL;
     FILE	*pf;
     char	*p, *q;
+    int flags;
     if ( mutex11 )
     {
         if ( NULL == ( xinlist = malloc ( 4096 ) ) )
@@ -498,6 +498,8 @@ int	initevents ( unsigned int evdevmask, int mutex11 )
                         }
                     }
                 }
+                flags = fcntl(eventdevs[i], F_GETFL, 0);
+                fcntl(eventdevs[i], F_SETFL, flags | O_NONBLOCK);
                 if ( k >= 0 ) {
                     sprintf ( xinlist+3801, "xinput set-int-prop %d \"Device "\
                         "Enabled\" 8 0", k );
@@ -1011,6 +1013,58 @@ int	parse_events ( fd_set * efds, int sockdesc )
     return	0;
 }
 
+static int evt_select(int sec, int usec, fd_set * efds)
+{
+    struct timeval tv;  // Used for "select"
+    int  maxevdevfileno = add_filedescriptors(efds);
+
+    tv.tv_sec  = sec;
+    tv.tv_usec = usec;
+    return select(maxevdevfileno+1, efds, NULL, NULL, &tv);
+}
+
+static int sc_accept(int sock, int wait_sec)
+{
+    struct timeval tv;  // Used for "select"
+    fd_set fds; 
+    int client;
+    int j;
+    struct sockaddr_l2	l2a;
+    socklen_t alen=sizeof(l2a);
+    char badr[40];
+
+    tv.tv_sec  = wait_sec;
+    tv.tv_usec = 0;
+    FD_ZERO ( &fds );
+    FD_SET  ( sock, &fds );
+    j = select ( sock + 1, &fds, NULL, NULL, &tv );
+    if ( j < 0 )
+    {
+        if ( errno == EINTR )
+        {	// Ctrl+C ? - handle that elsewhere
+            return 0;
+        }
+        return -2;
+    }
+    if ( j == 0 )
+    {
+        return 0;
+    }
+    client = accept(sock, (struct sockaddr *)&l2a, &alen);
+    if ( client < 0 )
+    {
+        if ( errno == EAGAIN )
+            return 0;
+        else
+            return -1;
+    }
+    ba2str ( &l2a.l2_bdaddr, badr );
+    badr[39] = 0;
+    fprintf ( stdout, "Incoming connection from node [%s] "
+            "accepted and established.\n", badr );
+    return client;
+}
+
 int	main ( int argc, char ** argv )
 {
     int			i,  j;
@@ -1028,7 +1082,6 @@ int	main ( int argc, char ** argv )
     int			evdevmask = 0;// If restricted to using only one evdev
     int			mutex11 = 0;      // try to "mute" in x11?
     char			*fifoname = NULL; // Filename for fifo, if applicable
-    struct udev* udev;
 
     // Parse command line
     for ( i = 1; i < argc; ++i )
@@ -1100,8 +1153,8 @@ int	main ( int argc, char ** argv )
     }
     
     system("hciconfig hci0 up");
-    system("hciconfig hci0 class 0x0025c0");
-    system("hciconfig hci0 name RaspberryPiVKBD");
+    //system("hciconfig hci0 class 0x0025c0");
+    //system("hciconfig hci0 name RaspberryPiVKBD");
     system("hciconfig hci0 piscan");
 
     sockint = socket ( AF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP );
@@ -1136,13 +1189,6 @@ int	main ( int argc, char ** argv )
     }
     // Add handlers to catch signals:
     // All do the same, terminate the program safely
-    // Ctrl+C will be ignored though (SIGINT) while a connection is active
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-        close ( sockint );
-        close ( sockctl );
-        exit(5);
-    }    
     signal ( SIGHUP,  &onsignal );
     signal ( SIGTERM, &onsignal );
     signal ( SIGINT,  &onsignal );
@@ -1152,100 +1198,58 @@ int	main ( int argc, char ** argv )
     while ( 0 == prepareshutdown )
     {	// Wait for any shutdown-event to occur
         sint = sctl = 0;
-        add_filedescriptors ( &efds );
-        tv.tv_sec  = 0;
-        tv.tv_usec = 0;
-        while ( 0 < (j = select(maxevdevfileno+1,&efds,NULL,NULL,&tv)))
+        while (0 < (j = evt_select(0, 500, &efds))) // minimal delay
         {	// Collect and discard input data as long as available
             if ( -1 >  ( j = parse_events ( &efds, 0 ) ) )
             {	// LCtrl-LAlt-PAUSE - terminate program
                 prepareshutdown = 1;
                 break;
             }
-            add_filedescriptors ( &efds );
-            tv.tv_sec  = 0;
-            tv.tv_usec = 500; // minimal delay
         }
         if ( prepareshutdown )
             break;
-        connectionok = 0;
-        tv.tv_sec  = 1;
-        tv.tv_usec = 0;
-        FD_ZERO ( &fds );
-        FD_SET  ( sockctl, &fds );
-        FD_SET  ( pipefd[1], &fds );
-        j = select ( sockctl + 1, &fds, NULL, NULL, &tv );
-        if ( j < 0 )
+
+        sctl = sc_accept(sockctl, 1);
+        if (sctl <= 0)
         {
-            if ( errno == EINTR )
-            {	// Ctrl+C ? - handle that elsewhere
-                continue;
+            if (sctl == -2) {
+                fprintf ( stderr, "select() error on BT socket: %s! "
+                        "Aborting.\n", strerror(errno));
+                return 11;
+            }else if (sctl == -1){
+                fprintf ( stderr, "Failed to get a control connection:"
+                        " %s\n", strerror ( errno ) );
+            }else if (sctl == 0) {
+                // Nothing happened, check for shutdown req and retry
+                if ( debugevents & 0x2 )
+                    fprintf ( stdout, "," );
             }
-            fprintf ( stderr, "select() error on BT socket: %s! "
-                    "Aborting.\n", strerror ( errno ) );
-            return	11;
-        }
-        if ( j == 0 )
-        {	// Nothing happened, check for shutdown req and retry
-            if ( debugevents & 0x2 )
-                fprintf ( stdout, "," );
             continue;
         }
-        sctl = accept ( sockctl, (struct sockaddr *)&l2a, &alen );
-        if ( sctl < 0 )
+
+        sint = sc_accept(sockint, 3);
+        if (sint <= 0)
         {
-            if ( errno == EAGAIN )
-            {
-                continue;
+            close(sctl);
+            if (sint == -2) {
+                fprintf ( stderr, "select() error on BT socket: %s! "
+                        "Aborting.\n", strerror ( errno ) );
+                return	12;
+            }else if(sint == -1) {
+                fprintf ( stderr, "Interrupt connection failed to "
+                        "establish (control connection already"
+                        " there), timeout!\n" );
+            }else{
+                fprintf ( stderr, "Failed to get an interrupt "
+                        "connection: %s\n", strerror(errno));
             }
-            fprintf ( stderr, "Failed to get a control connection:"
-                    " %s\n", strerror ( errno ) );
-            continue;
-        }
-        tv.tv_sec  = 3;
-        tv.tv_usec = 0;
-        FD_ZERO ( &fds );
-        FD_SET  ( sockint, &fds );
-        j = select ( sockint + 1, &fds, NULL, NULL, &tv );
-        if ( j < 0 )
-        {
-            if ( errno == EINTR )
-            {	// Might have been Ctrl+C
-                close ( sctl );
-                continue;
-            }
-            fprintf ( stderr, "select() error on BT socket: %s! "
-                    "Aborting.\n", strerror ( errno ) );
-            return	12;
-        }
-        if ( j == 0 )
-        {
-            fprintf ( stderr, "Interrupt connection failed to "
-                    "establish (control connection already"
-                    " there), timeout!\n" );
-            close ( sctl );
-            continue;
-        }
-        sint = accept ( sockint, (struct sockaddr *)&l2a, &alen );
-        if ( sint < 0 )
-        {
-            close ( sctl );
-            if ( errno == EAGAIN )
-                continue;
-            fprintf ( stderr, "Failed to get an interrupt "
-                    "connection: %s\n", strerror(errno));
             continue;
         }
         ba2str ( &l2a.l2_bdaddr, badr );
         badr[39] = 0;
         fprintf ( stdout, "Incoming connection from node [%s] "
                 "accepted and established.\n", badr );
-        tv.tv_sec  = 0;
-        tv.tv_usec = 0;
-        j = -1;
-        add_filedescriptors ( &efds );
-        FD_SET  ( pipefd[1], &fds );
-        while ( 0 < (j = select(maxevdevfileno+1,&efds,NULL,NULL,&tv)))
+        while ( 0 < (j = evt_select(0, 0, &efds)))
         {
             // This loop removes all input garbage that might be
             // already in the queue
@@ -1254,42 +1258,23 @@ int	main ( int argc, char ** argv )
                 prepareshutdown = 1;
                 break;
             }
-            add_filedescriptors ( &efds );
-            tv.tv_sec  = 0;
-            tv.tv_usec = 0;
         }
-        if ( prepareshutdown )
-            break;
-        connectionok = 1;
-        memset ( pressedkey, 0, 8 );
+        memset (pressedkey, 0, 8 );
         modifierkeys = 0;
         mousebuttons = 0;
-        while ( connectionok )
+        while (!prepareshutdown)
         {
-            add_filedescriptors ( &efds );
-            tv.tv_sec  = 1;
-            tv.tv_usec = 0;
-            while ( 0 < ( j = select ( maxevdevfileno + 1, &efds,
-                            NULL, NULL, &tv ) ) )
+            while (0 < (j = evt_select(1, 0, &efds)))
             {
-                if ( 0 > ( j = parse_events ( &efds, sint ) ) )
+                if ( 0 > ( j = parse_events (&efds, sint ) ) )
                 {
                     // PAUSE pressed - close connection
-                    connectionok = 0;
-                    if ( j < -1 )
-                    {	// LCtrl-LAlt-PAUSE - terminate
-                        close ( sint );
-                        close ( sctl );
-                        prepareshutdown = 1;
-                    }
+                    // LCtrl-LAlt-PAUSE - terminate
+                    prepareshutdown = 1;
                     break;
                 }
-                add_filedescriptors ( &efds );
-                tv.tv_sec  = 1;
-                tv.tv_usec = 0;
             }
         }
-        connectionok = 0;
         close ( sint );
         close ( sctl );
         sint = sctl =  0;
@@ -1300,8 +1285,6 @@ int	main ( int argc, char ** argv )
     //i = system ( "stty echo" );	   // Set console back to normal
     close ( sockint );
     close ( sockctl );
-    close (pipefd[0]); 
-    close (pipefd[1]); 
     if ( ! skipsdp )
     {
         sdpunregister(); // Remove HID info from SDP server
@@ -1349,22 +1332,14 @@ void	showhelp ( void )
 
 void	onsignal ( int i )
 {
-    fprintf ( stderr, "Received signal %d\n", i);
+    fprintf ( stderr, "\nReceived signal %d\n", i);
     // Shutdown should be done if:
     switch ( i )
     {
       case	SIGINT:
-        if ( 0 == connectionok )
-        {
-            // No connection is active and Ctrl+C is pressed
-            prepareshutdown = 2;
-        }
-        else
-        {	// Ctrl+C ignored while connected
-            // because it might be meant for the remote
-            fprintf ( stderr, "The remote is connected, can't execute shutdown request\n" );
-            return;
-        }
+        prepareshutdown = 2;
+        fprintf ( stderr, "Got shutdown request\n" );
+        break;
       case	SIGTERM:
       case	SIGHUP:
         // If a signal comes in
@@ -1372,9 +1347,4 @@ void	onsignal ( int i )
         fprintf ( stderr, "Got shutdown request\n" );
         break;
     }
-    if (prepareshutdown > 0) {
-        static char *finish = "finish";
-        write(pipefd[0], finish, sizeof(finish));
-    }
-    return;
 }
